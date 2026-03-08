@@ -177,7 +177,7 @@ const TasbihCounter = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-20">
+    <div className="max-w-2xl mx-auto flex flex-col min-h-[calc(100vh-200px)]">
       {/* Header / Mode Switcher */}
       <div className="flex items-center justify-between px-2">
         {mode === 'routine' ? (
@@ -279,8 +279,12 @@ const TasbihCounter = () => {
               </button>
             )}
           </div>
-        </div>
       </div>
+
+      {/* Spacer for mobile nav */}
+      <div className="flex-grow"></div>
+      <div className="h-20 md:h-0"></div>
+    </div>
 
       {/* Preset Tabs (Only in Counter Mode) */}
       {mode === 'counter' && (

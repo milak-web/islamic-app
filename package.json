@@ -1,6 +1,6 @@
 {
   "name": "islamic-app",
-  "homepage": "https://your-github-username.github.io/islamic-app",
+  "homepage": "https://milak-web.github.io/islamic-app",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "echo No-op"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",

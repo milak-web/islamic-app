@@ -21,7 +21,7 @@ function App() {
 
   return (
     <ReadingProvider>
-      <Router>
+      <Router basename="/islamic-app/">
       <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <NetworkStatus />
         {/* Header */}
