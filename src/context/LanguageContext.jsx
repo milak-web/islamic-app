@@ -182,8 +182,6 @@ export const LanguageProvider = ({ children }) => {
       lastthird: "Last Third",
       city: "City",
       country: "Country",
-      locationError: "Location not found.",
-      networkError: "Network error.",
       locationSecurityError: "Location requires a secure connection (HTTPS). Please enter city manually.",
       noResults: "No results found",
       offlineMode: "Offline Mode",
@@ -324,10 +322,6 @@ export const LanguageProvider = ({ children }) => {
       backToHome: "العودة للرئيسية",
       mashaAllah: "ما شاء الله!",
       keepItUp: "استمر في هذا العمل!",
-      openTasbih: "افتح التسبيح",
-      markAsDone: "تم الإنجاز",
-      autoTracking: "تتبع تلقائي",
-      completed: "مكتمل",
       gotoAdhkar: "الذهاب للأذكار",
       adhkar: "الأذكار",
       rewardsToday: "ثواب اليوم",
@@ -336,7 +330,6 @@ export const LanguageProvider = ({ children }) => {
       dailyStreak: "التتابع اليومي",
       startYourJourney: "ابدأ رحلتك",
       streakUsed: "تم استرجاع التتابع!",
-      keepItUp: "استمر في التقدم",
       prayerConfirmed: "تم تأكيد الصلاة! وقت الأذكار؟",
       plan: "الخطة",
       finishQuranIn: "ختم القرآن في",
@@ -389,7 +382,6 @@ export const LanguageProvider = ({ children }) => {
       next: "التالي",
       finish: "إنهاء",
       completedPrayerAdhkar: "لقد أتممت أذكار هذه الصلاة.",
-      backToHome: "العودة للرئيسية",
     }
   };
 
