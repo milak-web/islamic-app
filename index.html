@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/islamic-app/vite.svg" />
+    <meta name="theme-color" content="#10b981" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&display=swap" rel="stylesheet">
+    <style>
+      @font-face {
+        font-family: 'Uthman Taha Naskh';
+        src: url('/islamic-app/fonts/UthmanTahaNaskh.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+    <title>Islamic Life</title>
+    <script>
+      // Global error handler for dynamic import failures (common after new deployments)
+      window.addEventListener('error', (e) => {
+        if (e.message && (e.message.includes('Failed to fetch dynamically imported module') || e.message.includes('TypeError: Failed to fetch dynamically imported module'))) {
+          console.warn('Dynamic import failed, reloading page to fetch latest version...');
+          window.location.reload();
+        }
+      }, true);
+    </script>
+    <script type="module" crossorigin src="/islamic-app/assets/index-BtlmJoeQ.js"></script>
+    <link rel="stylesheet" crossorigin href="/islamic-app/assets/index-H8x84akG.css">
+  <link rel="manifest" href="/islamic-app/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/islamic-app/registerSW.js"></script></head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
