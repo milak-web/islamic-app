@@ -4,6 +4,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { countries } from '../data/countries';
 import * as adhan from 'adhan';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 import { NotificationService } from '../services/NotificationService';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -123,71 +124,91 @@ const PrayerTimes = () => {
     NotificationService.scheduleAdhanNotifications(offlineData.timings, dateStr);
   };
 
-  const fetchTimes = () => {
+  const getPrayerTimes = async () => {
     setLoading(true);
     setError(null);
-    setIsOfflineMode(false);
     
-    let url = '';
-    const date = new Date();
-    const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
-
-    // Priority: 1. Manual City/Country if provided, 2. Coords if available
-    if (city && city !== "Current Location" && country) {
-        url = `https://api.aladhan.com/v1/timingsByCity/${dateStr}?city=${city}&country=${country}&method=2`;
-    } else if (coords) {
-        url = `https://api.aladhan.com/v1/timings/${dateStr}?latitude=${coords.latitude}&longitude=${coords.longitude}&method=2`;
-    } else {
-        url = `https://api.aladhan.com/v1/timingsByCity/${dateStr}?city=${city}&country=${country}&method=2`;
+    // Always calculate offline times first as a fallback/immediate view
+    if (coords) {
+      calculateOfflineTimes(coords.latitude, coords.longitude);
     }
 
-    fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        if (data.code === 200) {
-          setTimes(data.data);
-          calculateNextPrayer(data.data.timings);
-          NotificationService.scheduleAdhanNotifications(data.data.timings, dateStr);
-          // Only update city if using coords
-          if (url.includes('latitude') && (!city || city === "Current Location")) {
-             setCity("Current Location");
-          }
-        } else {
-          if (coords) calculateOfflineTimes(coords.latitude, coords.longitude);
-          else setError('locationError');
+    try {
+      if (navigator.onLine) {
+        const date = new Date();
+        const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
+        
+        let url = '';
+        if (city && city !== "Current Location" && country) {
+            url = `https://api.aladhan.com/v1/timingsByCity/${dateStr}?city=${city}&country=${country}&method=3`;
+        } else if (coords) {
+            url = `https://api.aladhan.com/v1/timings/${dateStr}?latitude=${coords.latitude}&longitude=${coords.longitude}&method=3`;
         }
-        setLoading(false);
-      })
-      .catch(err => {
-        if (coords) calculateOfflineTimes(coords.latitude, coords.longitude);
-        else setError('networkError');
-        setLoading(false);
-      });
+
+        if (url) {
+          const response = await fetch(url);
+          const data = await response.json();
+          if (data.code === 200) {
+            setTimes(data.data);
+            calculateNextPrayer(data.data.timings);
+            NotificationService.scheduleAdhanNotifications(data.data.timings, dateStr);
+            setIsOfflineMode(false);
+          }
+        }
+      } else {
+        setIsOfflineMode(true);
+      }
+    } catch (err) {
+      console.error("API Error, using offline calculation:", err);
+      setIsOfflineMode(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchTimes();
+    getPrayerTimes();
 
-    // Temporary test for Adhan notification
-    const testAdhan = async () => {
-      await NotificationService.requestPermissions();
+    // Refresh every minute to update countdown/next prayer
+    const interval = setInterval(() => {
+      if (times) calculateNextPrayer(times.timings);
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [city, country, coords, times]);
+
+  const testAdhanNotification = async () => {
+    try {
+      const granted = await NotificationService.requestPermissions();
+      if (!granted) {
+        alert("Please enable notifications to test the Adhan sound.");
+        return;
+      }
+      
       const now = new Date();
-      const scheduleTime = new Date(now.getTime() + 5000); // 5 seconds from now
+      const scheduleTime = new Date(now.getTime() + 3000); // 3 seconds later
+      
+      const selectedVoice = localStorage.getItem('selectedAdhan') || 'adhan_makkah';
+      
       await LocalNotifications.schedule({
         notifications: [
-          {
+          { 
             id: 999,
-            title: "Adhan Test",
-            body: "This is a test of the Adhan notification.",
+            title: "Adhan Test (Sound)",
+            body: "This is a test of the Adhan notification sound.",
             schedule: { at: scheduleTime },
-            sound: (localStorage.getItem('selectedAdhan') || 'adhan_makkah') + '.mp3',
+            sound: Capacitor.getPlatform() === 'android' ? selectedVoice : `${selectedVoice}.mp3`,
+            extra: { type: 'test' }
           }
         ]
       });
-    };
-    testAdhan();
-
-  }, []); // Only on mount
+      
+      alert("Test scheduled for 3 seconds from now. If you don't hear sound, ensure your phone is not on silent and you are using the native app.");
+    } catch (err) {
+      console.error("Test notification failed:", err);
+      alert("Failed to schedule test notification.");
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -195,7 +216,7 @@ const PrayerTimes = () => {
       // Clear coords when searching for a city manually
       setCoords(null);
       localStorage.removeItem('prayerCoords');
-      fetchTimes();
+      getPrayerTimes();
     }
   };
 
@@ -212,9 +233,9 @@ const PrayerTimes = () => {
           localStorage.setItem('prayerCoords', JSON.stringify(newCoords));
           setCity("Current Location");
           setCountry("");
-          // No need to call fetchTimes manually, we'll call it now
+          // No need to call getPrayerTimes manually, we'll call it now
           // or rely on a state change. Let's call it to be sure.
-          fetchTimes();
+          getPrayerTimes();
         },
         (err) => {
           if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
@@ -377,6 +398,14 @@ const PrayerTimes = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+              
+              <button
+                onClick={testAdhanNotification}
+                className="mt-4 w-full py-2 px-4 border border-dashed border-emerald-200 rounded-xl text-[10px] font-black text-emerald-600 uppercase tracking-widest hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+              >
+                <Volume2 size={12} />
+                {t('testAdhanNotification')}
+              </button>
             </div>
           </div>
         </div>

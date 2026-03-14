@@ -1,8 +1,15 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 
 const scheduleNotification = async (id, title, body, date, extra = {}) => {
   const selectedAdhan = localStorage.getItem('selectedAdhan') || 'adhan_makkah';
-  const soundFile = `${selectedAdhan}.mp3`; // LocalNotifications expects .wav on Android resource folder usually, but let's stick to what works for the platform
+  
+  // Note: Sound files must be in the native project's resources folder
+  // Android: res/raw (reference without extension)
+  // iOS: Main bundle (reference with extension)
+  // Web/PWA: Custom sounds are generally not supported for notifications.
+  const platform = Capacitor.getPlatform();
+  const soundFile = platform === 'android' ? selectedAdhan : `${selectedAdhan}.mp3`;
 
   await LocalNotifications.schedule({
     notifications: [
@@ -10,57 +17,67 @@ const scheduleNotification = async (id, title, body, date, extra = {}) => {
         id,
         title,
         body,
-        schedule: { at: date },
+        schedule: { at: date, allowPause: false },
         sound: soundFile,
         attachments: [],
         actionTypeId: '',
-        extra
+        extra,
+        smallIcon: 'ic_stat_name', // Needs to be in res/drawable
+        iconColor: '#10b981'
       }
     ]
   });
 };
 
 const scheduleAdhanNotifications = async (timings, dateStr) => {
-  // Clear all existing adhan notifications (100-200 range)
-  const pending = await LocalNotifications.getPending();
-  const toCancel = pending.notifications
-    .filter(n => n.id >= 100 && n.id < 200)
-    .map(n => ({ id: n.id }));
-  
-  if (toCancel.length > 0) {
-    await LocalNotifications.cancel({ notifications: toCancel });
-  }
+  try {
+    const { display } = await LocalNotifications.checkPermissions();
+    if (display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
 
-  const prayers = [
-    { id: 1, name: 'Fajr', time: timings.Fajr },
-    { id: 2, name: 'Dhuhr', time: timings.Dhuhr },
-    { id: 3, name: 'Asr', time: timings.Asr },
-    { id: 4, name: 'Maghrib', time: timings.Maghrib },
-    { id: 5, name: 'Isha', time: timings.Isha }
-  ];
-
-  const today = new Date();
-  const [day, month, year] = dateStr.split('-').map(Number);
-
-  // For simplicity, we schedule for today and the next 6 days (total 7 days)
-  // Note: In a real production app, we would calculate times for each specific day
-  // using the adhan library locally for all 7 days.
-  for (let i = 0; i < 7; i++) {
-    const targetDate = new Date(year, month - 1, day + i);
+    // Clear all existing adhan notifications (100-200 range)
+    const pending = await LocalNotifications.getPending();
+    const toCancel = pending.notifications
+      .filter(n => n.id >= 100 && n.id < 200)
+      .map(n => ({ id: n.id }));
     
-    prayers.forEach(async (prayer) => {
-      const [hours, minutes] = prayer.time.split(':').map(Number);
-      const prayerDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), hours, minutes);
+    if (toCancel.length > 0) {
+      await LocalNotifications.cancel({ notifications: toCancel });
+    }
 
-      if (prayerDate > today) {
-        await scheduleNotification(
-          100 + (i * 10) + prayer.id,
-          `Time for ${prayer.name}`,
-          `It is time for ${prayer.name} prayer.`,
-          prayerDate
-        );
-      }
-    });
+    const prayers = [
+      { id: 1, name: 'Fajr', time: timings.Fajr },
+      { id: 2, name: 'Dhuhr', time: timings.Dhuhr },
+      { id: 3, name: 'Asr', time: timings.Asr },
+      { id: 4, name: 'Maghrib', time: timings.Maghrib },
+      { id: 5, name: 'Isha', time: timings.Isha }
+    ];
+
+    const now = new Date();
+    const [day, month, year] = dateStr.split('-').map(Number);
+
+    // Schedule for the next 3 days to keep it fresh
+    for (let i = 0; i < 3; i++) {
+      const targetDate = new Date(year, month - 1, day + i);
+      
+      prayers.forEach(async (prayer) => {
+        const [hours, minutes] = prayer.time.split(':').map(Number);
+        const prayerDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), hours, minutes);
+
+        if (prayerDate > now) {
+          await scheduleNotification(
+            100 + (i * 10) + prayer.id,
+            `Time for ${prayer.name}`,
+            `It is time for ${prayer.name} prayer.`,
+            prayerDate,
+            { type: 'adhan', prayer: prayer.name }
+          );
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Failed to schedule notifications:", err);
   }
 };
 

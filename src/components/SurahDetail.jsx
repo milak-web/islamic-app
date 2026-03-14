@@ -1,55 +1,35 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, PlayCircle, PauseCircle, BookOpen, ChevronLeft, ChevronRight, Bookmark, Settings, Minus, Plus, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, PlayCircle, PauseCircle, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getSurah } from '../utils/quranData';
 import useOnlineStatus from '../hooks/useOnlineStatus';
 import { useLanguage } from '../context/LanguageContext';
 import { useReading } from '../context/ReadingContext';
+import { useUserStats } from '../context/UserStatsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const toArabicNumerals = (n) => {
-    return n.toString().replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
-};
+import { useAudio } from '../context/AudioContext';
+import { useNavigate } from 'react-router-dom';
 
 const SurahDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { t, language } = useLanguage();
-  const { markPageRead } = useReading();
+  const { markPageRead, todayLog } = useReading();
+  const { recordQuranReading } = useUserStats();
+  const { isPlaying, currentSource, play, pause, stop } = useAudio();
+  
   const [surah, setSurah] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [fontSize, setFontSize] = useState(() => {
-    return parseInt(localStorage.getItem('mushafFontSize') || '36', 10);
-  });
-  const [font, setFont] = useState(() => {
-    return localStorage.getItem('mushafFont') || 'quran';
-  });
+  const [readingMode, setReadingMode] = useState(false);
+  const [fontSize, setFontSize] = useState(32);
   const [showSettings, setShowSettings] = useState(false);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const audioRef = useRef(null);
   const isOnline = useOnlineStatus();
-
-  // Bookmark / Stop Here logic
-  const [bookmark, setBookmark] = useState(() => {
-    const saved = localStorage.getItem('quranBookmark');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const saveBookmark = () => {
-    const newBookmark = { surahId: id, pageIndex, surahName: surah?.arabic.englishName };
-    setBookmark(newBookmark);
-    localStorage.setItem('quranBookmark', JSON.stringify(newBookmark));
-  };
-
-  useEffect(() => {
-    localStorage.setItem('mushafFontSize', fontSize);
-  }, [fontSize]);
-
-  useEffect(() => {
-    localStorage.setItem('mushafFont', font);
-  }, [font]);
+  
+  // Intersection Observer for Page Tracking
+  const observer = useRef(null);
+  const pageRefs = useRef({});
 
   useEffect(() => {
     // Fetch from local data
@@ -58,14 +38,6 @@ const SurahDetail = () => {
       .then(data => {
         if (data) {
           setSurah(data);
-          // If this is the bookmarked surah, jump to that page
-          const saved = localStorage.getItem('quranBookmark');
-          if (saved) {
-            const b = JSON.parse(saved);
-            if (b.surahId === id) {
-              // We need to wait for bookPages to be calculated
-            }
-          }
         }
         setLoading(false);
       })
@@ -73,15 +45,9 @@ const SurahDetail = () => {
         console.error(err);
         setLoading(false);
       });
-      
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      setIsPlaying(false);
-    };
   }, [id]);
+
+  const [pageIndex, setPageIndex] = useState(0);
 
   // Group ayahs by page for the Book Simulator
   const bookPages = useMemo(() => {
@@ -101,20 +67,12 @@ const SurahDetail = () => {
     })).sort((a, b) => a.page - b.page);
   }, [surah]);
 
-  // Jump to bookmark on load if applicable
-  useEffect(() => {
-    if (bookPages.length > 0 && bookmark && bookmark.surahId === id) {
-      // Find index of the bookmarked page
-      const idx = bookPages.findIndex(p => p.page === bookmark.pageIndex); // bookmark.pageIndex stored page number or index?
-      // Let's assume bookmark.pageIndex stored the array index for simplicity, or fix it
-      // Actually bookmark logic above uses pageIndex from state which is array index.
-      setPageIndex(bookmark.pageIndex);
-    }
-  }, [bookPages, id]); // Removing bookmark from dep array to avoid loop
-
   useEffect(() => {
     if (bookPages[pageIndex]) {
       markPageRead(bookPages[pageIndex].page);
+      // Record hasanat for all ayahs on this page
+      const pageText = bookPages[pageIndex].ayahs.map(a => a.text).join('');
+      recordQuranReading(pageText, bookPages[pageIndex].ayahs.length);
     }
   }, [pageIndex, bookPages, markPageRead]);
 
@@ -126,59 +84,32 @@ const SurahDetail = () => {
     if (pageIndex > 0) setPageIndex(prev => prev - 1);
   };
 
-  const [activeAyah, setActiveAyah] = useState(null);
-
-  const toggleAudio = (ayah) => {
-    if (activeAyah?.number === ayah.number && isPlaying) {
-      audioRef.current?.pause();
-      setIsPlaying(false);
-      setActiveAyah(null);
+  const toggleAudio = () => {
+    const isCurrentPlaying = currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id);
+    const isPlayingThisSurah = isCurrentPlaying && isPlaying;
+    
+    if (isPlayingThisSurah) {
+      pause();
     } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      // Format: 001001.mp3 (Surah 3 digits, Ayah 3 digits)
-      const surahPad = String(id).padStart(3, '0'); // id is surah number
-      const ayahPad = String(ayah.numberInSurah).padStart(3, '0');
-      const url = `https://everyayah.com/data/Alafasy_128kbps/${surahPad}${ayahPad}.mp3`;
+      const pad = (n) => n.toString().padStart(3, '0');
+      const surahNumber = pad(id);
       
-      audioRef.current = new Audio(url);
-      audioRef.current.onended = () => {
-        setIsPlaying(false);
-        setActiveAyah(null);
-      };
-      audioRef.current.play().catch(e => console.error(e));
-      setIsPlaying(true);
-      setActiveAyah(ayah);
+      const urls = [
+        `https://download.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
+        `https://server7.mp3quran.net/afs/${surahNumber}.mp3`,
+        `https://server8.mp3quran.net/afs/${surahNumber}.mp3`,
+        `https://server11.mp3quran.net/afs/${surahNumber}.mp3`
+      ];
+
+      play(urls, { type: 'surah', surahNumber: parseInt(id) });
     }
   };
 
-  const toggleFullSurahAudio = () => {
-      // Plays the whole surah logic (existing)
-      if (isPlaying && !activeAyah) {
-          audioRef.current?.pause();
-          setIsPlaying(false);
-      } else {
-          // Play full surah
-          // ... implementation for full surah
-          setIsPlaying(true);
-      }
-  }
-
-  useEffect(() => {
-      const handleKeyDown = (e) => {
-          if (e.key === 'ArrowLeft') nextPage(); // Left arrow goes to next page in RTL
-          else if (e.key === 'ArrowRight') prevPage();
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pageIndex]);
-
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-[#fffcf2] flex flex-col items-center justify-center space-y-4 z-[9999]">
-        <div className="w-12 h-12 border-4 border-emerald-600/20 border-t-emerald-600 rounded-full animate-spin"></div>
-        <p className="text-emerald-800 font-black uppercase tracking-[0.3em] text-[10px]">{t('loading')}...</p>
+      <div className="flex flex-col items-center justify-center py-40 space-y-4">
+        <div className="w-12 h-12 border-4 border-emerald-50 border-t-emerald-600 rounded-full animate-spin"></div>
+        <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">{t('loading')}...</p>
       </div>
     );
   }
@@ -188,203 +119,168 @@ const SurahDetail = () => {
   const currentPage = bookPages[pageIndex];
 
   return (
-    <div className="fixed inset-0 bg-[#2f2f2f] flex flex-col overflow-hidden z-[9999]">
-      
-      {/* Header */}
-      <AnimatePresence>
-        {!isFullScreen && (
-          <motion.header 
-            initial={{ y: -100 }}
-            animate={{ y: 0 }}
-            exit={{ y: -100 }}
-            className="h-16 flex-shrink-0 bg-[#1a1a1a] text-white px-4 shadow-md flex justify-between items-center z-[100] relative border-b border-[#333]"
-          >
-            <div className="flex items-center gap-4">
-                <Link to="/quran" className="p-2 hover:bg-[#333] rounded-full transition-all">
-                    <ArrowLeft size={20} className={language === 'ar' ? 'rotate-180' : ''} />
-                </Link>
-                <div className="hidden sm:block">
-                    <h1 className="text-sm font-bold text-gray-300 uppercase tracking-widest">{surah.arabic.englishName}</h1>
-                </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-                <button 
-                    onClick={saveBookmark}
-                    className={`p-2 rounded-full transition-all ${bookmark?.surahId === id && bookmark?.pageIndex === pageIndex ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`}
-                    title={t('stopHere')}
-                >
-                    <Bookmark size={18} fill={bookmark?.surahId === id && bookmark?.pageIndex === pageIndex ? "currentColor" : "none"} />
-                </button>
-
-                 <div className="flex items-center gap-2 bg-[#333] rounded-lg p-1 mx-2">
-                    <button onClick={() => setFontSize(s => Math.max(s - 2, 16))} className="p-1.5 hover:bg-black/20 rounded text-xs font-bold text-gray-300">A-</button>
-                    <span className="text-xs w-6 text-center text-gray-300">{fontSize}</span>
-                    <button onClick={() => setFontSize(s => Math.min(s + 2, 60))} className="p-1.5 hover:bg-black/20 rounded text-xs font-bold text-gray-300">A+</button>
-                 </div>
-
-                 <div className="flex items-center gap-1 bg-[#333] rounded-lg p-1">
-                    <button onClick={() => setFont('quran')} className={`p-1.5 px-2 rounded text-xs font-bold ${font === 'quran' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:bg-black/20'}`}>Amiri</button>
-                    <button onClick={() => setFont('uthman')} className={`p-1.5 px-2 rounded text-xs font-bold ${font === 'uthman' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:bg-black/20'}`}>Uthman</button>
-                 </div>
-                
-                <motion.button 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setIsFullScreen(true)}
-                    className="p-2 hover:bg-[#333] rounded-full transition-all text-gray-300"
-                >
-                    <Maximize2 size={18} />
-                </motion.button>
-            </div>
-          </motion.header>
-        )}
-      </AnimatePresence>
-
-      {/* Main Book Area */}
-      <main className="flex-1 relative flex items-center justify-center p-0 sm:p-8 overflow-hidden bg-[#2f2f2f]">
+    <div className="fixed inset-0 bg-[#fbf9f4] z-[9999] flex flex-col overflow-hidden">
+      {/* Mushaf Header - Elegant and Traditional */}
+      <div className="absolute top-0 left-0 right-0 p-4 sm:p-6 flex justify-between items-center z-[100] bg-white/90 backdrop-blur-md border-b border-amber-200/40 text-emerald-950 shadow-sm">
+        <Link to="/quran" className="p-3 hover:bg-emerald-50 rounded-2xl transition-all border border-transparent hover:border-emerald-100/50">
+          <ArrowLeft size={24} className={language === 'ar' ? 'rotate-180' : ''} />
+        </Link>
         
-        {/* Page Container */}
-        <AnimatePresence mode="wait">
-            <motion.div 
-                key={pageIndex}
-                initial={{ opacity: 0, rotateY: 90 }}
-                animate={{ opacity: 1, rotateY: 0 }}
-                exit={{ opacity: 0, rotateY: -90 }}
-                transition={{ duration: 0.4, ease: "easeInOut" }}
-                className="relative bg-[#fffcf2] w-full max-w-[500px] h-full max-h-[85vh] shadow-[0_0_50px_rgba(0,0,0,0.5)] sm:rounded-md flex flex-col overflow-hidden border-x-[1px] border-[#e0e0e0]"
-                style={{
-                    perspective: '1000px',
-                    transformStyle: 'preserve-3d'
-                }}
-            >
-                {/* Book Spine/Binding Effect */}
-                <div className="absolute left-0 top-0 bottom-0 w-[6px] bg-gradient-to-r from-[#dcdcdc] to-transparent z-10 opacity-60"></div>
-                <div className="absolute right-0 top-0 bottom-0 w-[6px] bg-gradient-to-l from-[#dcdcdc] to-transparent z-10 opacity-60"></div>
-                
-                {/* Decorative Frame */}
-                <div className="absolute inset-2 border-[8px] border-double border-[#79907f] z-0 rounded-sm pointer-events-none"></div>
-                <div className="absolute inset-3 border border-[#79907f] z-0 rounded-sm pointer-events-none opacity-50"></div>
-
-                {/* Corner Decorations (SVG) */}
-                <div className="absolute top-4 left-4 w-16 h-16 pointer-events-none z-0 opacity-80">
-                   <svg viewBox="0 0 100 100" className="w-full h-full fill-[#79907f]">
-                      <path d="M0 0 L40 0 C20 0 20 20 0 40 Z" />
-                      <path d="M5 5 L35 5 C20 5 20 20 5 35 Z" fill="#d4e0d7" />
-                   </svg>
-                </div>
-                <div className="absolute top-4 right-4 w-16 h-16 pointer-events-none z-0 opacity-80 rotate-90">
-                   <svg viewBox="0 0 100 100" className="w-full h-full fill-[#79907f]">
-                      <path d="M0 0 L40 0 C20 0 20 20 0 40 Z" />
-                      <path d="M5 5 L35 5 C20 5 20 20 5 35 Z" fill="#d4e0d7" />
-                   </svg>
-                </div>
-                <div className="absolute bottom-4 left-4 w-16 h-16 pointer-events-none z-0 opacity-80 -rotate-90">
-                   <svg viewBox="0 0 100 100" className="w-full h-full fill-[#79907f]">
-                      <path d="M0 0 L40 0 C20 0 20 20 0 40 Z" />
-                      <path d="M5 5 L35 5 C20 5 20 20 5 35 Z" fill="#d4e0d7" />
-                   </svg>
-                </div>
-                <div className="absolute bottom-4 right-4 w-16 h-16 pointer-events-none z-0 opacity-80 rotate-180">
-                   <svg viewBox="0 0 100 100" className="w-full h-full fill-[#79907f]">
-                      <path d="M0 0 L40 0 C20 0 20 20 0 40 Z" />
-                      <path d="M5 5 L35 5 C20 5 20 20 5 35 Z" fill="#d4e0d7" />
-                   </svg>
-                </div>
-
-                {/* Page Header - Matches the traditional Mushaf layout */}
-                <div className="h-10 flex items-center justify-between px-8 bg-[#fffcf2] mt-4 z-10 relative font-quran text-black border-b border-[#d4d4d4]">
-                    <span className="text-sm font-bold tracking-tight">{surah.arabic.name}</span> {/* Right: Current Surah (or previous if mid-page) */}
-                    <span className="text-sm font-bold mx-auto tracking-tight">{toArabicNumerals(currentPage.page)}</span> {/* Center: Page Number */}
-                    <span className="text-sm font-bold tracking-tight">{t('juz')} {toArabicNumerals(currentPage.ayahs[0].juz)}</span> {/* Left: Juz Number */}
-                </div>
-
-                {/* Page Content - The Text */}
-                <div className="flex-1 px-8 py-4 overflow-y-auto custom-scrollbar flex flex-col items-center justify-start text-center bg-[#fffcf2] z-10 relative">
-                    <div 
-                        className={`leading-[2.8] text-justify text-[#1a1a1a] w-full antialiased font-${font}`}
-                        style={{ fontSize: `${fontSize}px`, direction: 'rtl', textAlignLast: 'center', fontFeatureSettings: '"calt" 1, "liga" 1' }}
-                    >
-                        {currentPage.ayahs.map((ayah, idx) => {
-                             const isSurahStart = ayah.numberInSurah === 1;
-                             let text = ayah.text;
-                             if (isSurahStart && surah.arabic.number !== 1 && surah.arabic.number !== 9) {
-                                 text = text.replace('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ', '').trim();
-                             }
-
-                             return (
-                                <React.Fragment key={ayah.number}>
-                                    {isSurahStart && (
-                                        <div className="w-full my-4 flex flex-col items-center">
-                                            {/* Surah Header Decoration - Exact Match */}
-                                            <div className="w-full max-w-[90%] h-12 relative flex items-center justify-center mb-4">
-                                                {/* SVG Decorative Frame */}
-                                                <svg viewBox="0 0 400 50" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                                                    <path d="M15 5 L385 5 L395 25 L385 45 L15 45 L5 25 Z" fill="#e6f0e8" stroke="#a0b8a7" strokeWidth="1" />
-                                                    <path d="M20 8 L380 8 L388 25 L380 42 L20 42 L12 25 Z" fill="#d4e0d7" />
-                                                </svg>
-                                                
-                                                <h3 className="font-quran text-xl text-[#2d4a33] relative z-20 px-8 pb-1">{surah.arabic.name}</h3>
-                                            </div>
-                                            
-                                            {surah.arabic.number !== 1 && surah.arabic.number !== 9 && (
-                                                <p className="font-quran text-xl text-black relative z-10 mb-6 mt-2">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</p>
-                                            )}
-                                        </div>
-                                    )}
-                                    <span 
-                                        onClick={() => toggleAudio(ayah)}
-                                        className={`inline cursor-pointer hover:bg-[#e0f2f1] rounded px-0.5 transition-colors leading-[2.6] decoration-clone box-decoration-clone ${activeAyah?.number === ayah.number ? 'bg-[#d1fae5]' : ''}`}
-                                    >
-                                        {text} 
-                                        {/* Custom SVG Ayah Marker - Exact Copy */}
-                                        <span className="inline-flex items-center justify-center align-middle mx-1.5 relative select-none w-[1.2em] h-[1.2em]" style={{ fontSize: '0.8em', verticalAlign: '-0.15em' }}>
-                                            <svg viewBox="0 0 100 100" className="w-full h-full absolute inset-0 text-emerald-600 fill-transparent stroke-emerald-500 stroke-[4]">
-                                               <circle cx="50" cy="50" r="45" />
-                                            </svg>
-                                            <span className="relative z-10 font-quran text-emerald-800 text-[0.5em] translate-y-[1px]">{toArabicNumerals(ayah.numberInSurah)}</span>
-                                        </span>
-                                    </span>
-                                </React.Fragment>
-                             );
-                        })}
-                    </div>
-                </div>
-
-                {/* Page Footer */}
-                <div className="h-10 flex items-center justify-center bg-[#fffcf2] mb-6 z-10 relative">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">{t('juz')} {currentPage.ayahs[0].juz}</span>
-                </div>
-
-            </motion.div>
-        </AnimatePresence>
-
-        {/* Navigation Controls Overlay */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-between px-2 sm:px-12">
-            <button 
-                onClick={nextPage}
-                className="pointer-events-auto w-10 h-10 rounded-full bg-black/30 hover:bg-emerald-600 text-white backdrop-blur-sm flex items-center justify-center transition-all hover:scale-110"
-            >
-                <ChevronLeft size={20} />
-            </button>
-            <button 
-                onClick={prevPage}
-                className="pointer-events-auto w-10 h-10 rounded-full bg-black/30 hover:bg-emerald-600 text-white backdrop-blur-sm flex items-center justify-center transition-all hover:scale-110"
-            >
-                <ChevronRight size={20} />
-            </button>
+        <div className="text-center flex flex-col items-center">
+          <h1 className="text-2xl sm:text-3xl font-quran text-emerald-950 leading-none drop-shadow-sm">{surah.arabic.name}</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="h-px w-4 bg-amber-200/60" />
+            <span className="text-[9px] sm:text-[10px] font-black text-amber-800/50 uppercase tracking-[0.3em]">
+              {t('page')} {currentPage.page} • {surah.arabic.englishName}
+            </span>
+            <span className="h-px w-4 bg-amber-200/60" />
+          </div>
         </div>
 
-        {isFullScreen && (
-             <button 
-                onClick={() => setIsFullScreen(false)}
-                className="absolute top-4 right-4 z-50 p-2 bg-black/50 text-white rounded-full hover:bg-emerald-600 transition-all"
-             >
-                <Minimize2 size={20} />
-             </button>
-        )}
+        <button 
+          onClick={toggleAudio}
+          disabled={!isOnline}
+          className={`p-3 rounded-2xl transition-all border shadow-sm ${
+            isOnline 
+              ? (currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying)
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-600/20' 
+                : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'
+              : 'opacity-20 bg-slate-100 border-slate-200'
+          }`}
+        >
+          {(currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying) ? <PauseCircle size={24} className="animate-pulse" /> : <PlayCircle size={24} />}
+        </button>
+      </div>
 
-      </main>
+      {/* Mushaf Viewport */}
+      <div className="flex-1 relative bg-[#fbf9f4]">
+        <AnimatePresence mode="wait" initial={false} custom={language === 'ar' ? -1 : 1}>
+          <motion.div 
+            key={pageIndex}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            onDragEnd={(e, { offset, velocity }) => {
+              const swipe = offset.x;
+              const threshold = 50;
+              if (swipe < -threshold) {
+                language === 'ar' ? prevPage() : nextPage();
+              } else if (swipe > threshold) {
+                language === 'ar' ? nextPage() : prevPage();
+              }
+            }}
+            initial={{ opacity: 0, x: language === 'ar' ? 100 : -100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: language === 'ar' ? -100 : 100 }}
+            transition={{ type: "spring", stiffness: 260, damping: 26 }}
+            className="absolute inset-0 flex flex-col overflow-hidden"
+          >
+            {/* Fine Paper Texture Overlay */}
+            <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]" />
+            
+            {/* Book Effect Shadows */}
+            <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-black/5 to-transparent pointer-events-none z-20" />
+            <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-black/5 to-transparent pointer-events-none z-20" />
+            <div className="absolute inset-y-0 left-1/2 w-px bg-amber-900/5 pointer-events-none z-20" />
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto pt-32 pb-44 px-6 sm:px-16 md:px-24 custom-scrollbar relative z-10 scroll-smooth">
+              <div className="max-w-4xl mx-auto">
+                {/* Surah Header - Ornate Traditional Frame */}
+                {pageIndex === 0 && (
+                  <div className="text-center mb-16 relative py-12 px-6 animate-fade-in">
+                    <div className="absolute inset-0 border-[1px] border-amber-200/60 rounded-[4rem] scale-[1.05]" />
+                    <div className="absolute inset-0 border-[3px] border-double border-amber-200/40 rounded-[3.5rem]" />
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-center gap-4 mb-2">
+                        <div className="h-px w-12 bg-gradient-to-r from-transparent to-amber-200" />
+                        <span className="text-amber-800/40 text-[10px] font-black uppercase tracking-[0.4em]">Surah</span>
+                        <div className="h-px w-12 bg-gradient-to-l from-transparent to-amber-200" />
+                      </div>
+                      <h2 className="font-quran text-7xl sm:text-8xl md:text-9xl text-emerald-950 mb-4 drop-shadow-sm selection:bg-emerald-100">{surah.arabic.name}</h2>
+                      <p className="text-[11px] font-black text-amber-800/30 uppercase tracking-[0.6em] mb-8">{surah.arabic.englishName}</p>
+                      {surah.arabic.number !== 1 && surah.arabic.number !== 9 && (
+                        <div className="relative inline-block px-10">
+                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-px bg-amber-100" />
+                           <p className="font-quran text-3xl sm:text-4xl text-emerald-900/70" dir="rtl">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</p>
+                           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-px bg-amber-100" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Justified Quranic Text Flow */}
+                <div 
+                  className="font-quran text-slate-900 text-justify leading-[2.5] sm:leading-[3.2] md:leading-[3.8] w-full selection:bg-emerald-50"
+                  style={{ 
+                    fontSize: `${fontSize}px`, 
+                    direction: 'rtl',
+                    textAlignLast: 'center'
+                  }}
+                >
+                  {currentPage.ayahs.map((ayah, i) => {
+                    let text = ayah.text;
+                    if (ayah.numberInSurah === 1 && surah.arabic.number !== 1 && surah.arabic.number !== 9) {
+                        text = text.replace('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ', '').trim();
+                    }
+                    return (
+                      <span key={ayah.number} className="inline group">
+                        <span className="hover:text-emerald-700 transition-colors duration-300">{text}</span>
+                        <span className="inline-flex items-center justify-center relative w-12 h-12 sm:w-14 sm:h-14 mx-2 sm:mx-4 align-middle">
+                           <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full text-amber-100 fill-current opacity-30 group-hover:opacity-60 group-hover:text-emerald-100 transition-all duration-500">
+                              <path d="M50 5 L65 35 L95 50 L65 65 L50 95 L35 65 L5 50 L35 35 Z" />
+                           </svg>
+                           <span className="relative text-[10px] sm:text-[11px] font-sans font-black text-amber-900/50 group-hover:text-emerald-900 transition-colors duration-500 mt-0.5">
+                              {ayah.numberInSurah}
+                           </span>
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Footer Controls - Mushaf Aesthetic */}
+      <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-10 flex flex-col items-center gap-6 z-[100] bg-gradient-to-t from-[#fbf9f4] via-[#fbf9f4]/95 to-transparent">
+        <div className="w-full max-w-lg h-1.5 bg-amber-100/40 rounded-full overflow-hidden shadow-inner border border-amber-200/10">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${((pageIndex + 1) / bookPages.length) * 100}%` }}
+            className="h-full bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+          />
+        </div>
+        
+        <div className="flex items-center gap-6 sm:gap-12">
+           <button 
+             onClick={prevPage} 
+             disabled={pageIndex === 0}
+             className="w-12 h-12 sm:w-14 sm:h-14 bg-white border border-amber-100 hover:bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-900 disabled:opacity-0 transition-all shadow-sm active:scale-95"
+           >
+             <ChevronLeft size={24} className={language === 'ar' ? 'rotate-180' : ''} />
+           </button>
+           
+           <div className="bg-white px-6 sm:px-10 py-3 rounded-2xl border border-amber-100 shadow-sm flex flex-col items-center min-w-[120px]">
+              <span className="text-[9px] font-black text-amber-800/30 uppercase tracking-[0.4em] mb-1">
+                {t('page')}
+              </span>
+              <span className="text-lg sm:text-xl font-black text-emerald-950 tabular-nums">
+                {pageIndex + 1} <span className="text-amber-200/60 mx-1">/</span> {bookPages.length}
+              </span>
+           </div>
+
+           <button 
+             onClick={nextPage} 
+             disabled={pageIndex === bookPages.length - 1}
+             className="w-12 h-12 sm:w-14 sm:h-14 bg-white border border-amber-100 hover:bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-900 disabled:opacity-0 transition-all shadow-sm active:scale-95"
+           >
+             <ChevronRight size={24} className={language === 'ar' ? 'rotate-180' : ''} />
+           </button>
+        </div>
+      </div>
     </div>
   );
 };

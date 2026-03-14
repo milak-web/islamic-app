@@ -2,10 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Circle, Award, Star, Moon, ExternalLink, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useUserStats } from '../context/UserStatsContext';
 import { useNavigate } from 'react-router-dom';
 
 const SalahTracker = () => {
   const { t } = useLanguage();
+  const { recordPrayer } = useUserStats();
   const navigate = useNavigate();
   const [completed, setCompleted] = useState(() => {
     const saved = localStorage.getItem('dailySalah');
@@ -67,6 +69,9 @@ const SalahTracker = () => {
   const togglePrayer = (key) => {
     const isNowCompleted = !completed[key];
     setCompleted(prev => ({ ...prev, [key]: isNowCompleted }));
+    if (isNowCompleted) {
+      recordPrayer(key);
+    }
   };
 
   const openTasbih = () => {

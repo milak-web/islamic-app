@@ -10,7 +10,7 @@ export default {
         sans: ['Inter', 'sans-serif'],
         serif: ['Merriweather', 'serif'],
         arabic: ['Amiri', 'serif'],
-        quran: ['Amiri Quran', 'serif'],
+        quran: ["'Uthman Taha Naskh'", 'Amiri Quran', 'serif'],
         scheherazade: ['Scheherazade New', 'serif'],
       },
       animation: {

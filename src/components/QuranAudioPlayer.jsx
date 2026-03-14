@@ -1,68 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { useAudio } from '../context/AudioContext';
+import { Play, Pause, SkipBack, SkipForward, Loader2, Volume2, VolumeX } from 'lucide-react';
 import quranData from '../data/quran-uthmani.json';
-
 import { reciters } from '../data/reciters';
+import { motion } from 'framer-motion';
 
 const QuranAudioPlayer = () => {
   const { t, language } = useLanguage();
+  const { isPlaying, currentSource, duration, currentTime, isLoading, error, play, pause, seek, stop } = useAudio();
+  
   const [selectedReciter, setSelectedReciter] = useState(() => {
     const saved = localStorage.getItem('selectedReciter');
-    return saved ? reciters.find(r => r.id === parseInt(saved)) : reciters[0];
+    return saved ? reciters.find(r => r.id === parseInt(saved)) || reciters[0] : reciters[0];
   });
+  
   const [selectedSurah, setSelectedSurah] = useState(() => {
     const saved = localStorage.getItem('selectedSurah');
-    return saved ? quranData.data.surahs.find(s => s.number === parseInt(saved)) : quranData.data.surahs[0];
+    return saved ? quranData.data.surahs.find(s => s.number === parseInt(saved)) || quranData.data.surahs[0] : quranData.data.surahs[0];
   });
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioError, setAudioError] = useState(null);
-  const audioRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('selectedReciter', selectedReciter.id);
     localStorage.setItem('selectedSurah', selectedSurah.number);
   }, [selectedReciter, selectedSurah]);
 
-  const createAudio = () => {
-    try {
-      setAudioError(null);
-      const surahNumber = String(selectedSurah.number).padStart(3, '0');
-      const audioUrl = `${selectedReciter.server}/${surahNumber}.mp3`;
-      const newAudio = new Audio(audioUrl);
-      newAudio.onerror = () => {
-        setAudioError('Audio for this reciter is currently unavailable.');
-        setIsPlaying(false);
-      };
-      audioRef.current = newAudio;
-    } catch (error) {
-      setAudioError('Failed to load audio. Please try again later.');
-      setIsPlaying(false);
-    }
-  };
+  const handlePlay = () => {
+    const pad = (n) => n.toString().padStart(3, '0');
+    const surahNumber = pad(selectedSurah.number);
+    
+    // Fallback URLs
+    const urls = [
+      `${selectedReciter.server}/${surahNumber}.mp3`,
+      `https://download.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
+      `https://server8.mp3quran.net/afs/${surahNumber}.mp3`,
+      `https://server11.mp3quran.net/afs/${surahNumber}.mp3`
+    ];
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    }
-    createAudio();
-  }, [selectedSurah, selectedReciter]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) {
-      createAudio();
-    }
-
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play().catch(() => {
-        setAudioError('Audio for this reciter is currently unavailable.');
-        setIsPlaying(false);
-      });
-    }
-    setIsPlaying(!isPlaying);
+    play(urls, { type: 'surah', surahNumber: selectedSurah.number, reciterId: selectedReciter.id });
   };
 
   const handleSkip = (direction) => {
@@ -74,56 +49,145 @@ const QuranAudioPlayer = () => {
     }
   };
 
+  const formatTime = (time) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const isCurrentSurahPlaying = currentSource?.type === 'surah' && 
+                               currentSource?.surahNumber === selectedSurah.number &&
+                               currentSource?.reciterId === selectedReciter.id;
+
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold text-emerald-800 mb-6">{t('listenToQuran')}</h1>
-
-      <div className="bg-white p-6 rounded-lg shadow-lg">
-        <div className="mb-4">
-          <label htmlFor="surah" className="block text-sm font-medium text-slate-700 mb-2">{t('surah')}</label>
-          <select 
-            id="surah" 
-            value={selectedSurah.number} 
-            onChange={(e) => setSelectedSurah(quranData.data.surahs.find(s => s.number === parseInt(e.target.value)))}
-            className="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
-          >
-            {quranData.data.surahs.map(surah => (
-              <option key={surah.number} value={surah.number}>{surah.number}. {language === 'en' ? surah.englishName : surah.name}</option>
-            ))}
-          </select>
+    <div className="max-w-xl mx-auto space-y-8 pb-20 px-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white rounded-[3rem] shadow-xl border border-slate-50 p-8 sm:p-12 flex flex-col items-center relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 p-8 opacity-5">
+          <Volume2 size={120} />
         </div>
 
-        <div className="mb-4">
-          <label htmlFor="reciter" className="block text-sm font-medium text-slate-700 mb-2">{t('reciter')}</label>
-          <select 
-            id="reciter" 
-            value={selectedReciter.id} 
-            onChange={(e) => setSelectedReciter(reciters.find(r => r.id === e.target.value))}
-            className="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
-          >
-            {reciters.map(reciter => (
-              <option key={reciter.id} value={reciter.id}>{reciter.name}</option>
-            ))}
-          </select>
-        </div>
+        <div className="w-full space-y-8 relative z-10">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-black text-emerald-950 uppercase tracking-tighter">
+                {language === 'en' ? selectedSurah.englishName : <span className="font-quran text-4xl">{selectedSurah.name}</span>}
+            </h1>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{selectedReciter.name}</p>
+          </div>
 
-        <div className="flex items-center justify-center space-x-6 my-8">
-          <button onClick={() => handleSkip('backward')} className="p-2 rounded-full hover:bg-slate-100 transition"><SkipBack className="text-slate-600" /></button>
-          <button 
-            onClick={togglePlay}
-            className="p-4 bg-emerald-600 text-white rounded-full shadow-md hover:bg-emerald-700 transition"
-          >
-            {isPlaying ? <Pause size={32} /> : <Play size={32} />}
-          </button>
-          <button onClick={() => handleSkip('forward')} className="p-2 rounded-full hover:bg-slate-100 transition"><SkipForward className="text-slate-600" /></button>
-        </div>
+          {/* Visualizer / Placeholder */}
+          <div className="h-48 flex items-center justify-center bg-slate-50 rounded-[2.5rem] border border-slate-100 shadow-inner relative group">
+             {isLoading ? (
+               <Loader2 size={48} className="text-emerald-500 animate-spin" />
+             ) : (
+               <div className="flex items-center gap-1">
+                 {[...Array(12)].map((_, i) => (
+                   <motion.div
+                     key={i}
+                     animate={isPlaying && isCurrentSurahPlaying ? { height: [20, 40, 20] } : { height: 20 }}
+                     transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
+                     className="w-1.5 bg-emerald-500 rounded-full"
+                   />
+                 ))}
+               </div>
+             )}
+          </div>
 
-        <div className="text-center">
-          <p className="text-lg font-semibold text-slate-800">{language === 'en' ? selectedSurah.englishName : selectedSurah.name}</p>
-          <p className="text-sm text-slate-500">{selectedReciter.name}</p>
-          {audioError && <p className="text-sm text-red-500 mt-2">{audioError}</p>}
+          {/* Progress Bar */}
+          <div className="space-y-2">
+            <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden group cursor-pointer" onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const percent = (e.clientX - rect.left) / rect.width;
+              seek(percent * duration);
+            }}>
+              <motion.div 
+                className="absolute top-0 left-0 h-full bg-emerald-500"
+                style={{ width: `${(currentTime / duration) * 100}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-8">
+            <motion.button 
+              whileTap={{ scale: 0.9 }}
+              onClick={() => handleSkip('backward')} 
+              className="p-4 bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-3xl transition-all"
+            >
+              <SkipBack size={24} />
+            </motion.button>
+
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={isCurrentSurahPlaying ? (isPlaying ? pause : handlePlay) : handlePlay}
+              className="p-8 bg-emerald-600 text-white rounded-full shadow-2xl shadow-emerald-600/30 hover:bg-emerald-700 transition-all relative"
+            >
+              {isLoading && isCurrentSurahPlaying ? (
+                <Loader2 size={40} className="animate-spin" />
+              ) : (
+                (isPlaying && isCurrentSurahPlaying) ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-1" />
+              )}
+            </motion.button>
+
+            <motion.button 
+              whileTap={{ scale: 0.9 }}
+              onClick={() => handleSkip('forward')} 
+              className="p-4 bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-3xl transition-all"
+            >
+              <SkipForward size={24} />
+            </motion.button>
+          </div>
+
+          {/* Selectors */}
+          <div className="grid grid-cols-1 gap-4 pt-4">
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">{t('reciter')}</label>
+                <select 
+                  value={selectedReciter.id} 
+                  onChange={(e) => setSelectedReciter(reciters.find(r => r.id === parseInt(e.target.value)))}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-black text-slate-700 uppercase tracking-tighter focus:ring-2 focus:ring-emerald-500 outline-none appearance-none cursor-pointer"
+                >
+                  {reciters.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+             </div>
+             
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">{t('surah')}</label>
+                <select 
+                  value={selectedSurah.number} 
+                  onChange={(e) => setSelectedSurah(quranData.data.surahs.find(s => s.number === parseInt(e.target.value)))}
+                  className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-black text-slate-700 uppercase tracking-tighter focus:ring-2 focus:ring-emerald-500 outline-none appearance-none cursor-pointer"
+                >
+                  {quranData.data.surahs.map(s => (
+                    <option key={s.number} value={s.number}>{language === 'en' ? s.englishName : s.name}</option>
+                  ))}
+                </select>
+             </div>
+          </div>
+
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 text-red-500 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-center"
+            >
+              {error}
+            </motion.div>
+          )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

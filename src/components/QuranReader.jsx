@@ -79,7 +79,7 @@ const QuranReader = () => {
                             </div>
                             </div>
                             <div className="text-right">
-                              <h3 className="font-arabic text-2xl text-emerald-800 drop-shadow-sm">{surah.name}</h3>
+                              <h3 className="font-quran text-3xl text-emerald-800 drop-shadow-sm">{surah.name}</h3>
                             </div>
                         </div>
                       </Link>

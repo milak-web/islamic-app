@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { BookOpen, Moon, Sun, Clock, Home, Info, Globe, Heart, Volume2 } from 'lucide-react';
 import QuranReader from './components/QuranReader';
 import SurahDetail from './components/SurahDetail';
@@ -13,6 +13,7 @@ import QuranAudioPlayer from './components/QuranAudioPlayer';
 import Dashboard from './components/Dashboard';
 import About from './components/About';
 import NetworkStatus from './components/NetworkStatus';
+import ForegroundAdhanManager from './components/ForegroundAdhanManager';
 import { useLanguage } from './context/LanguageContext';
 import { ReadingProvider } from './context/ReadingContext';
 
@@ -21,9 +22,10 @@ function App() {
 
   return (
     <ReadingProvider>
-      <Router basename="/islamic-app/">
+      <Router>
       <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <NetworkStatus />
+        <ForegroundAdhanManager />
         {/* Header */}
         <header className="bg-emerald-600 text-white shadow-md sticky top-0 z-50">
           <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -97,6 +99,10 @@ function App() {
           <Link to="/dua" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
             <BookOpen size={24} />
             <span className="text-xs">{t('dua')}</span>
+          </Link>
+          <Link to="/listen" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
+            <Volume2 size={24} />
+            <span className="text-xs">{t('listen')}</span>
           </Link>
           <Link to="/prayer-times" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
             <Clock size={24} />

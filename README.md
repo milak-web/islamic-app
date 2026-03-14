@@ -47,10 +47,11 @@ This project uses Capacitor to build native mobile apps.
    npx cap sync
    ```
 
-3. **Add Adhan Sound (Optional but recommended)**:
-   To enable the Adhan sound for notifications on Android:
-   - Place an `adhan.wav` file in `android/app/src/main/res/raw/`.
-   - On iOS, place it in the app's root bundle in Xcode.
+3. **Add Adhan Sounds (Crucial for sound notifications)**:
+   To enable the Adhan sound for notifications on mobile:
+   - **Android**: Create a folder `android/app/src/main/res/raw/` and place your `.mp3` files there. The files should be named exactly as the voice IDs (e.g., `adhan_makkah.mp3`, `adhan_madinah.mp3`, etc.).
+   - **iOS**: Drag the `.mp3` files into your project in Xcode and ensure they are included in the "Copy Bundle Resources" phase.
+   - **Web/PWA**: Note that custom sounds for notifications are generally not supported by browsers. Sound will only play in the foreground via the app's internal player.
 
 4. Open the Android project in Android Studio:
    ```bash
@@ -59,8 +60,14 @@ This project uses Capacitor to build native mobile apps.
 
 5. Inside Android Studio:
    - Let Gradle sync complete.
+   - Ensure the `res/raw` folder exists and contains the Adhan files.
    - Go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
    - Once built, locate the APK in `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+## Important Note on Sound Playback
+- **Browser Restrictions**: Mobile browsers (Chrome/Safari) prevent automatic sound playback unless the user has interacted with the page first.
+- **Background Execution**: On most mobile devices, browsers pause execution when the app is in the background or the screen is locked, which may prevent the "Adhan" sound from triggering in PWA mode. For the most reliable sound experience, use the **Native Android/iOS app**.
+- **Adhan Name**: You might see the Adhan referred to as "Adam" or "Adan" in some contexts, but it refers to the Islamic call to prayer.
 
 ## Features Breakdown
 

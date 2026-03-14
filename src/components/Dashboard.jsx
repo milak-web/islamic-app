@@ -4,12 +4,14 @@ import { BookOpen, Clock, Heart, Moon, Star, Quote, ChevronRight } from 'lucide-
 import SalahTracker from './SalahTracker';
 import SpecialEvents from './SpecialEvents';
 import { useLanguage } from '../context/LanguageContext';
+import { useUserStats } from '../context/UserStatsContext';
 import quranData from '../data/quran-uthmani.json';
 import quranEnData from '../data/quran-en.json';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Dashboard = () => {
   const { t, language } = useLanguage();
+  const { streak, todayHasanat, hasanat, streakSaved } = useUserStats();
   const [dailyVerse, setDailyVerse] = useState(null);
 
   useEffect(() => {
@@ -67,6 +69,65 @@ const Dashboard = () => {
       animate="visible"
       className="space-y-10 pb-20"
     >
+      {/* Rewards & Streak Header */}
+      <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+        <div className="col-span-1 md:col-span-2 bg-white rounded-[2rem] sm:rounded-[2.5rem] p-4 sm:p-8 shadow-sm border border-slate-50 flex flex-col sm:flex-row items-center justify-between overflow-hidden relative group">
+          <div className="absolute top-0 right-0 p-2 sm:p-4 opacity-5 group-hover:scale-110 transition-transform">
+            <Star size={80} fill="currentColor" className="text-amber-400 sm:w-[120px] sm:h-[120px]" />
+          </div>
+          <div className="space-y-2 sm:space-y-4 relative z-10 text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2">
+              <div className="bg-amber-100 p-1.5 rounded-lg text-amber-600">
+                <Star size={14} fill="currentColor" className="sm:w-5 sm:h-5" />
+              </div>
+              <span className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] sm:tracking-[0.3em]">{t('rewardsToday')}</span>
+            </div>
+            <div className="space-y-0.5 sm:space-y-1">
+              <h2 className="text-2xl sm:text-5xl font-black text-slate-900 tabular-nums tracking-tighter">
+                {todayHasanat.toLocaleString()}
+              </h2>
+              <p className="text-[9px] sm:text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('hasanatEarned')}</p>
+            </div>
+          </div>
+          <div className="text-center sm:text-right space-y-0.5 sm:space-y-1 relative z-10 mt-2 sm:mt-0">
+            <p className="text-[8px] sm:text-[10px] font-black text-slate-300 uppercase tracking-widest">{t('totalLifeTime')}</p>
+            <p className="text-xs sm:text-lg font-black text-slate-400 tabular-nums">{hasanat.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="col-span-1 bg-gradient-to-br from-amber-400 to-orange-500 rounded-[2rem] sm:rounded-[2.5rem] p-4 sm:p-8 shadow-lg shadow-orange-500/20 text-white flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute -bottom-2 -right-2 sm:-bottom-4 sm:-right-4 opacity-20 rotate-12 group-hover:scale-110 transition-transform">
+            <Clock size={100} className="sm:w-[150px] sm:h-[150px]" />
+          </div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-4">
+              <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-md">
+                <Clock size={14} className="sm:w-5 sm:h-5" />
+              </div>
+              <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] opacity-80">{t('dailyStreak')}</span>
+            </div>
+            <div className="flex items-baseline gap-1 sm:gap-2">
+              <h2 className="text-3xl sm:text-6xl font-black tabular-nums tracking-tighter">{streak}</h2>
+              <span className="text-[10px] sm:text-sm font-black uppercase tracking-widest opacity-80">{t('days')}</span>
+            </div>
+          </div>
+          <div className="relative z-10 mt-2 sm:mt-0">
+            {streak === 0 ? (
+              <p className="text-[7px] sm:text-[10px] font-black uppercase tracking-widest bg-white/20 py-1.5 px-3 sm:py-2 sm:px-4 rounded-full inline-block backdrop-blur-md">
+                {streakSaved ? t('streakUsed') : t('startYourJourney')}
+              </p>
+            ) : (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="h-1 sm:h-1.5 flex-1 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-white w-full shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+                </div>
+                <span className="text-[7px] sm:text-[10px] font-black uppercase tracking-widest whitespace-nowrap">{t('keepItUp')}!</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
       {/* Salah Tracker Section */}
       <motion.section variants={itemVariants} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
