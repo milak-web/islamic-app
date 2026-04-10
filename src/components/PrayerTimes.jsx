@@ -168,14 +168,16 @@ const PrayerTimes = () => {
 
   useEffect(() => {
     getPrayerTimes();
+  }, [city, country, coords]);
 
+  useEffect(() => {
     // Refresh every minute to update countdown/next prayer
     const interval = setInterval(() => {
       if (times) calculateNextPrayer(times.timings);
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [city, country, coords, times]);
+  }, [times]);
 
   const testAdhanNotification = async () => {
     try {

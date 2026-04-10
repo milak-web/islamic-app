@@ -1,86 +1,61 @@
-# Islamic App (Quran & Hadith)
+# 🕋 Islamic App: Your Spiritual Companion
 
-A comprehensive Islamic application built with React, Vite, and Capacitor.
+A comprehensive, privacy-first Islamic application designed to support your daily worship. Built with a modern tech stack (React, Vite, and Capacitor), this app provides a seamless experience across Web, Android, and iOS.
 
-## Features
-- **Quran Reader**: Read Quran with English translation, Reading Mode, and progress tracking.
-- **Hadith**: Browse Hadith collections.
-- **Prayer Times**: Accurate prayer times based on location.
-- **Dua**: Collection of authentic Duas.
-- **Tasbih**: Digital Tasbih counter.
-- **Offline Support**: PWA capabilities for offline access.
+---
 
-## Tech Stack
-- React 19
-- Vite
-- Tailwind CSS
-- Capacitor (for Android/iOS builds)
+## 🔗 Live Access
+Access the application here: [https://milak-web.github.io/islamic-app/](https://milak-web.github.io/islamic-app/)
 
-## Setup & Installation
+---
 
-1. Install dependencies:
+## 🌟 Key Features
+
+- **📖 Quran Reader**: A beautiful Mushaf-style reading experience with English translations and advanced progress tracking.
+- **🕌 Prayer Times**: Highly accurate, location-based prayer times with automated Adhan scheduling.
+- **📚 Hadith Explorer**: Browse and search through authentic collections of Hadith.
+- **🤲 Dua Collection**: A curated library of authentic Duas for every occasion.
+- **📿 Digital Tasbih**: A minimalist, tactile counter for your daily Dhikr.
+- **⚡ Offline First**: Full PWA support ensures that the Quran, Duas, and Prayer Times are available even without an internet connection.
+
+---
+
+## 🚀 Mobile & Platform Support
+
+This project is fully optimized for mobile platforms using **Capacitor**.
+
+### 📱 Android & iOS
+- **Native Experience**: Smooth animations and native system integration.
+- **Custom Adhan**: High-quality Adhan notifications (Makkah, Madinah, etc.) for native app users.
+- **Background Support**: Reliable prayer time alerts that function even when the device is locked.
+
+---
+
+## 🛠️ Technical Overview
+
+### Tech Stack
+- **Frontend**: React 19, Vite
+- **Styling**: Tailwind CSS, Framer Motion
+- **Mobile**: Capacitor (Geolocation, Local Notifications)
+- **Offline**: Service Workers (PWA), Local Storage caching
+
+### Local Development
+1. **Install dependencies**:
    ```bash
    npm install
    ```
-
-2. Run development server:
+2. **Launch development server**:
    ```bash
    npm run dev
    ```
-
-## Building for Android
-
-This project uses Capacitor to build native mobile apps.
-
-### Prerequisites
-- Java 17+ (Required by Gradle 8.0+)
-- Android Studio (latest version recommended)
-
-### Build Steps
-1. Build the web assets:
+3. **Build for production**:
    ```bash
    npm run build
    ```
 
-2. Sync web assets to Android project:
-   ```bash
-   npx cap sync
-   ```
+---
 
-3. **Add Adhan Sounds (Crucial for sound notifications)**:
-   To enable the Adhan sound for notifications on mobile:
-   - **Android**: Create a folder `android/app/src/main/res/raw/` and place your `.mp3` files there. The files should be named exactly as the voice IDs (e.g., `adhan_makkah.mp3`, `adhan_madinah.mp3`, etc.).
-   - **iOS**: Drag the `.mp3` files into your project in Xcode and ensure they are included in the "Copy Bundle Resources" phase.
-   - **Web/PWA**: Note that custom sounds for notifications are generally not supported by browsers. Sound will only play in the foreground via the app's internal player.
+## 📜 License
+This project is open-source and available under the MIT License.
 
-4. Open the Android project in Android Studio:
-   ```bash
-   npx cap open android
-   ```
-
-5. Inside Android Studio:
-   - Let Gradle sync complete.
-   - Ensure the `res/raw` folder exists and contains the Adhan files.
-   - Go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
-   - Once built, locate the APK in `android/app/build/outputs/apk/debug/app-debug.apk`.
-
-## Important Note on Sound Playback
-- **Browser Restrictions**: Mobile browsers (Chrome/Safari) prevent automatic sound playback unless the user has interacted with the page first.
-- **Background Execution**: On most mobile devices, browsers pause execution when the app is in the background or the screen is locked, which may prevent the "Adhan" sound from triggering in PWA mode. For the most reliable sound experience, use the **Native Android/iOS app**.
-- **Adhan Name**: You might see the Adhan referred to as "Adam" or "Adan" in some contexts, but it refers to the Islamic call to prayer.
-
-## Features Breakdown
-
-### Offline Reliability
-- **Prayer Times**: Calculated locally using the `adhan` library if the internet is unavailable. It uses your last saved location.
-- **Quran & Duas**: 100% offline, bundled with the app.
-- **Hadith**: Cached for 30 days after the first online browse.
-
-### Notifications
-- **Adhan**: The app schedules notifications for all 5 daily prayers.
-- **Reminders**: Daily reminders for Morning/Evening Adhkar and maintaining your Quran reading streak.
-
-## Troubleshooting
-
-### Gradle Build Failed (Java Version)
-If you see an error about Java version mismatch (e.g., "Dependency requires at least JVM runtime version 11. This build uses a Java 8 JVM"), you need to update your JAVA_HOME environment variable to point to JDK 17 or higher. Android Studio usually bundles a compatible JDK.
+*May this app be a source of benefit for the Ummah.* 🤲✨

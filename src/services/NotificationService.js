@@ -2,13 +2,21 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 
 const scheduleNotification = async (id, title, body, date, extra = {}) => {
+  const platform = Capacitor.getPlatform();
+  
+  // Skip notification scheduling on web if it's causing dynamic import issues
+  // Web notifications are generally not reliable for custom sounds anyway.
+  if (platform === 'web') {
+    console.log("Skipping notification schedule on web platform");
+    return;
+  }
+
   const selectedAdhan = localStorage.getItem('selectedAdhan') || 'adhan_makkah';
   
   // Note: Sound files must be in the native project's resources folder
   // Android: res/raw (reference without extension)
   // iOS: Main bundle (reference with extension)
   // Web/PWA: Custom sounds are generally not supported for notifications.
-  const platform = Capacitor.getPlatform();
   const soundFile = platform === 'android' ? selectedAdhan : `${selectedAdhan}.mp3`;
 
   await LocalNotifications.schedule({

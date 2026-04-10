@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
-import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, Settings, Bookmark, Trophy, Home, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, Settings, Bookmark, Trophy, Home, Maximize2, Minimize2, Volume2, Plus, Minus } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import quranData from '../../data/quran-uthmani.json';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAudio } from '../../context/AudioContext';
 
 const ReadingMode = () => {
   const { t, language } = useLanguage();
   const navigate = useNavigate();
   const { surahNumber } = useParams();
+  const { play, currentSource, isPlaying } = useAudio();
   const isChallengeMode = !!surahNumber;
   const [isFullScreen, setIsFullScreen] = useState(false);
 
@@ -73,6 +75,22 @@ const ReadingMode = () => {
   const [fontSize, setFontSize] = useState(() => {
     return parseInt(localStorage.getItem('quranFontSize') || '32', 10);
   });
+
+  const playAyah = (ayah) => {
+    const pad = (n, len) => n.toString().padStart(len, '0');
+    const sNum = pad(ayah.surahNumber, 3);
+    const aNum = pad(ayah.numberInSurah, 3);
+    
+    // Alafasy Ayah-by-Ayah Audio
+    const url = `https://everyayah.com/data/Alafasy_128kbps/${sNum}${aNum}.mp3`;
+    
+    play(url, { 
+      type: 'ayah', 
+      surahNumber: ayah.surahNumber, 
+      ayahNumber: ayah.numberInSurah,
+      id: `${ayah.surahNumber}:${ayah.numberInSurah}` 
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem('quranFontSize', fontSize);
@@ -208,6 +226,28 @@ const ReadingMode = () => {
             </div>
 
             <div className="flex items-center gap-2">
+                <div className="flex items-center bg-white/10 rounded-2xl p-1 border border-white/5 mr-2">
+                  <motion.button 
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setFontSize(s => Math.max(s - 4, 16))}
+                    className="p-2 hover:bg-white/10 rounded-xl transition-all"
+                    title="Decrease Font Size"
+                  >
+                    <Minus size={18} />
+                  </motion.button>
+                  <span className="px-2 text-xs font-black min-w-[3rem] text-center">{fontSize}px</span>
+                  <motion.button 
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setFontSize(s => Math.min(s + 4, 100))}
+                    className="p-2 hover:bg-white/10 rounded-xl transition-all"
+                    title="Increase Font Size"
+                  >
+                    <Plus size={18} />
+                  </motion.button>
+                </div>
+
                 <motion.button 
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -267,6 +307,7 @@ const ReadingMode = () => {
                    <div className="flex flex-wrap justify-center gap-x-4 gap-y-12" dir="rtl">
                       {surahAyahs.map((ayah) => {
                           const isCurrent = ayah.number === currentAyah.number;
+                          const isPlayingThisAyah = currentSource?.id === `${ayah.surahNumber}:${ayah.numberInSurah}` && isPlaying;
                           const index = allAyahs.findIndex(a => a.number === ayah.number);
                           
                           let ayahText = ayah.text;
@@ -278,26 +319,55 @@ const ReadingMode = () => {
                             <div 
                               key={ayah.number}
                               ref={el => ayahRefs.current[index] = el}
-                              onClick={() => setCurrentAyahIndex(index)}
+                              onClick={() => {
+                                setCurrentAyahIndex(index);
+                                playAyah(ayah);
+                              }}
                               className={`relative transition-all duration-500 cursor-pointer p-4 rounded-3xl ${
                                 isCurrent 
                                   ? 'bg-emerald-50/50 ring-1 ring-emerald-100 scale-[1.02]' 
                                   : 'hover:bg-slate-50/50'
                               }`}
                             >
+                                {isPlayingThisAyah && (
+                                  <motion.div 
+                                    layoutId="playing-indicator"
+                                    className="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-600 text-white p-1.5 rounded-full shadow-lg z-10"
+                                  >
+                                    <Volume2 size={12} className="animate-pulse" />
+                                  </motion.div>
+                                )}
                                 <p 
-                                   className="font-quran leading-[2.8] text-emerald-950 text-center selection:bg-emerald-100 selection:text-emerald-900"
+                                   className={`font-quran leading-[2.8] text-center selection:bg-emerald-100 selection:text-emerald-900 transition-colors duration-500 ${
+                                     isPlayingThisAyah ? 'text-emerald-600 font-bold' : 'text-emerald-950'
+                                   }`}
                                    style={{ 
                                      fontSize: `${fontSize}px`
                                    }}
                                  >
                                   {ayahText}
-                                  <span className="inline-flex items-center justify-center mr-4">
-                                      <span className="relative w-12 h-12 flex items-center justify-center">
-                                          <svg viewBox="0 0 100 100" className={`w-full h-full fill-current transition-colors duration-500 ${isCurrent ? 'text-emerald-600' : 'text-emerald-100'}`}>
-                                              <path d="M50 5 L65 35 L95 50 L65 65 L50 95 L35 65 L5 50 L35 35 Z" />
+                                  <span className="inline-flex items-center justify-center mx-4">
+                                      <span className="relative w-14 h-14 flex items-center justify-center">
+                                          <svg viewBox="0 0 100 100" className={`w-full h-full transition-all duration-500 ${isCurrent ? 'text-emerald-600' : 'text-amber-200/40'}`}>
+                                              {/* Traditional Rub el Hizb (8-point star) Base */}
+                                              <path 
+                                                fill="none" 
+                                                stroke="currentColor" 
+                                                strokeWidth="2.5" 
+                                                d="M50 5 L63 25 L85 25 L85 47 L105 60 L85 73 L85 95 L63 95 L50 115 L37 95 L15 95 L15 73 L-5 60 L15 47 L15 25 L37 25 Z"
+                                                transform="scale(0.8) translate(12, 12)"
+                                              />
+                                              {/* Inner Circle with Ornate Dots */}
+                                              <circle cx="50" cy="50" r="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 4" />
+                                              <circle cx="50" cy="50" r="26" fill="none" stroke="currentColor" strokeWidth="1" />
+                                              
+                                              {/* Traditional Side Accents */}
+                                              <path fill="currentColor" d="M15 50 L25 45 L25 55 Z" />
+                                              <path fill="currentColor" d="M85 50 L75 45 L75 55 Z" />
+                                              <path fill="currentColor" d="M50 15 L45 25 L55 25 Z" />
+                                              <path fill="currentColor" d="M50 85 L45 75 L55 75 Z" />
                                           </svg>
-                                          <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-black font-sans mt-0.5 ${isCurrent ? 'text-white' : 'text-emerald-900'}`}>
+                                          <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-bold font-sans mt-0.5 ${isCurrent ? 'text-emerald-800' : 'text-amber-900/70'}`}>
                                               {ayah.numberInSurah}
                                           </span>
                                       </span>

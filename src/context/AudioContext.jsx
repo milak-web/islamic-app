@@ -14,6 +14,7 @@ export const AudioProvider = ({ children }) => {
 
   useEffect(() => {
     const audio = audioRef.current;
+    audio.crossOrigin = "anonymous"; // Handle CORS for external servers
 
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
@@ -57,19 +58,20 @@ export const AudioProvider = ({ children }) => {
 
     const tryPlay = (index) => {
       if (index >= urlList.length) {
-        setError("Failed to load audio from any source");
+        setError("Failed to load audio from any available source. Please check your connection.");
         setIsLoading(false);
         setIsPlaying(false);
         return;
       }
 
       const url = urlList[index];
+      let loadTimeout;
 
       // If same source and already loaded, just toggle
       if (currentSource?.url === url) {
         if (audio.paused) {
           audio.play().catch(e => {
-            console.error("Play failed", e);
+            console.error("Play failed for", url, e);
             tryPlay(index + 1);
           });
         } else {
@@ -85,24 +87,37 @@ export const AudioProvider = ({ children }) => {
       setError(null);
       setIsLoading(true);
 
-      const onCanPlay = () => {
-        setIsLoading(false);
-        audio.play().catch(e => {
-          console.error("Play failed", e);
-          tryPlay(index + 1);
-        });
+      const cleanup = () => {
+        clearTimeout(loadTimeout);
         audio.removeEventListener('canplay', onCanPlay);
         audio.removeEventListener('error', onError);
       };
 
+      const onCanPlay = () => {
+        cleanup();
+        setIsLoading(false);
+        audio.play().catch(e => {
+          console.error("Playback failed for", url, e);
+          tryPlay(index + 1);
+        });
+      };
+
       const onError = (e) => {
-        console.error(`Error loading audio from ${url}:`, e);
-        audio.removeEventListener('canplay', onCanPlay);
-        audio.removeEventListener('error', onError);
+        // Only log if not an intentional abort
+        if (audio.error && audio.error.code !== 4) { // 4 is MEDIA_ERR_ABORTED
+          console.warn(`Source failed: ${url}. Trying next...`, e);
+        }
+        cleanup();
         // Clear src to stop any background loading before trying next
         audio.src = "";
         tryPlay(index + 1);
       };
+
+      // Add a 10-second timeout for each source
+      loadTimeout = setTimeout(() => {
+        console.warn(`Source timed out: ${url}. Trying next...`);
+        onError(new Error("Loading timeout"));
+      }, 10000);
 
       audio.addEventListener('canplay', onCanPlay);
       audio.addEventListener('error', onError);
@@ -110,7 +125,7 @@ export const AudioProvider = ({ children }) => {
       try {
         audio.load();
       } catch (err) {
-        console.error("Audio load failed:", err);
+        console.error("Audio load initiation failed:", err);
         onError(err);
       }
     };

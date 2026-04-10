@@ -32,9 +32,11 @@ const QuranAudioPlayer = () => {
     // Fallback URLs
     const urls = [
       `${selectedReciter.server}/${surahNumber}.mp3`,
-      `https://download.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
+      `https://server7.mp3quran.net/afs/${surahNumber}.mp3`,
       `https://server8.mp3quran.net/afs/${surahNumber}.mp3`,
-      `https://server11.mp3quran.net/afs/${surahNumber}.mp3`
+      `https://server11.mp3quran.net/afs/${surahNumber}.mp3`,
+      `https://download.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
+      `https://mirrors.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`
     ];
 
     play(urls, { type: 'surah', surahNumber: selectedSurah.number, reciterId: selectedReciter.id });

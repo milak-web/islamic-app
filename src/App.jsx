@@ -97,20 +97,12 @@ function App() {
             <span className="text-xs">{t('hadith')}</span>
           </Link>
           <Link to="/dua" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
-            <BookOpen size={24} />
+            <Heart size={24} />
             <span className="text-xs">{t('dua')}</span>
-          </Link>
-          <Link to="/listen" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
-            <Volume2 size={24} />
-            <span className="text-xs">{t('listen')}</span>
           </Link>
           <Link to="/prayer-times" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
             <Clock size={24} />
-            <span className="text-xs">{t('prayers')}</span>
-          </Link>
-          <Link to="/tasbih" className="flex flex-col items-center text-slate-600 hover:text-emerald-600">
-            <Moon size={24} />
-            <span className="text-xs">{t('tasbih')}</span>
+            <span className="text-xs">{t('prayerTimes')}</span>
           </Link>
         </nav>
       </div>

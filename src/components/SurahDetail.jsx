@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, PlayCircle, PauseCircle, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, PlayCircle, PauseCircle, BookOpen, ChevronLeft, ChevronRight, Plus, Minus } from 'lucide-react';
 import { getSurah } from '../utils/quranData';
 import useOnlineStatus from '../hooks/useOnlineStatus';
 import { useLanguage } from '../context/LanguageContext';
@@ -23,8 +23,15 @@ const SurahDetail = () => {
   const [surah, setSurah] = useState(null);
   const [loading, setLoading] = useState(true);
   const [readingMode, setReadingMode] = useState(false);
-  const [fontSize, setFontSize] = useState(32);
+  const [fontSize, setFontSize] = useState(() => {
+    return parseInt(localStorage.getItem('quranFontSize') || '32', 10);
+  });
   const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('quranFontSize', fontSize);
+  }, [fontSize]);
+
   const isOnline = useOnlineStatus();
   
   // Intersection Observer for Page Tracking
@@ -70,11 +77,14 @@ const SurahDetail = () => {
   useEffect(() => {
     if (bookPages[pageIndex]) {
       markPageRead(bookPages[pageIndex].page);
-      // Record hasanat for all ayahs on this page
-      const pageText = bookPages[pageIndex].ayahs.map(a => a.text).join('');
-      recordQuranReading(pageText, bookPages[pageIndex].ayahs.length);
+      // Record hasanat for each ayah on this page
+      bookPages[pageIndex].ayahs.forEach(ayah => {
+        // Unique ID for each ayah: surahNumber_ayahNumber
+        const ayahId = `quran_${surah.number}_${ayah.numberInSurah}`;
+        recordQuranReading(ayah.text, ayahId);
+      });
     }
-  }, [pageIndex, bookPages, markPageRead]);
+  }, [pageIndex, bookPages, markPageRead, recordQuranReading, surah?.number]);
 
   const nextPage = () => {
     if (pageIndex < bookPages.length - 1) setPageIndex(prev => prev + 1);
@@ -82,6 +92,26 @@ const SurahDetail = () => {
 
   const prevPage = () => {
     if (pageIndex > 0) setPageIndex(prev => prev - 1);
+  };
+
+  const playAyah = (ayah) => {
+    const pad = (n, len) => n.toString().padStart(len, '0');
+    const sNum = pad(parseInt(id), 3);
+    const aNum = pad(ayah.numberInSurah, 3);
+    
+    // Multi-source Ayah-by-Ayah Audio (Alafasy)
+    const urls = [
+      `https://mirrors.quranicaudio.com/everyayah/Alafasy_128kbps/${sNum}${aNum}.mp3`,
+      `https://verses.quran.com/Alafasy/mp3/${sNum}${aNum}.mp3`,
+      `https://everyayah.com/data/Alafasy_128kbps/${sNum}${aNum}.mp3`
+    ];
+    
+    play(urls, { 
+      type: 'ayah', 
+      surahNumber: parseInt(id), 
+      ayahNumber: ayah.numberInSurah,
+      id: `${id}:${ayah.numberInSurah}` 
+    });
   };
 
   const toggleAudio = () => {
@@ -96,6 +126,7 @@ const SurahDetail = () => {
       
       const urls = [
         `https://download.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
+        `https://mirrors.quranicaudio.com/quran/mishari_rashid_al_afasy/${surahNumber}.mp3`,
         `https://server7.mp3quran.net/afs/${surahNumber}.mp3`,
         `https://server8.mp3quran.net/afs/${surahNumber}.mp3`,
         `https://server11.mp3quran.net/afs/${surahNumber}.mp3`
@@ -137,28 +168,49 @@ const SurahDetail = () => {
           </div>
         </div>
 
-        <button 
-          onClick={toggleAudio}
-          disabled={!isOnline}
-          className={`p-3 rounded-2xl transition-all border shadow-sm ${
-            isOnline 
-              ? (currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying)
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-600/20' 
-                : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'
-              : 'opacity-20 bg-slate-100 border-slate-200'
-          }`}
-        >
-          {(currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying) ? <PauseCircle size={24} className="animate-pulse" /> : <PlayCircle size={24} />}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-emerald-50 rounded-2xl p-1 border border-emerald-100 mr-2">
+            <button 
+              onClick={() => setFontSize(s => Math.max(s - 4, 16))}
+              className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all"
+              title="Decrease Font Size"
+            >
+              <Minus size={18} />
+            </button>
+            <span className="px-2 text-xs font-black min-w-[3rem] text-center text-emerald-900">{fontSize}px</span>
+            <button 
+              onClick={() => setFontSize(s => Math.min(s + 4, 100))}
+              className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all"
+              title="Increase Font Size"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+
+          <button 
+            onClick={toggleAudio}
+            disabled={!isOnline}
+            className={`p-3 rounded-2xl transition-all border shadow-sm ${
+              isOnline 
+                ? (currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying)
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-600/20' 
+                  : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'
+                : 'opacity-20 bg-slate-100 border-slate-200'
+            }`}
+          >
+            {(currentSource?.type === 'surah' && currentSource?.surahNumber === parseInt(id) && isPlaying) ? <PauseCircle size={24} className="animate-pulse" /> : <PlayCircle size={24} />}
+          </button>
+        </div>
       </div>
 
       {/* Mushaf Viewport */}
-      <div className="flex-1 relative bg-[#fbf9f4]">
+      <div className="flex-1 relative bg-[#fbf9f4] w-full max-w-full overflow-hidden">
         <AnimatePresence mode="wait" initial={false} custom={language === 'ar' ? -1 : 1}>
           <motion.div 
             key={pageIndex}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.1}
             onDragEnd={(e, { offset, velocity }) => {
               const swipe = offset.x;
               const threshold = 50;
@@ -172,7 +224,7 @@ const SurahDetail = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: language === 'ar' ? -100 : 100 }}
             transition={{ type: "spring", stiffness: 260, damping: 26 }}
-            className="absolute inset-0 flex flex-col overflow-hidden"
+            className="absolute inset-0 flex flex-col overflow-hidden w-full"
           >
             {/* Fine Paper Texture Overlay */}
             <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')]" />
@@ -183,8 +235,11 @@ const SurahDetail = () => {
             <div className="absolute inset-y-0 left-1/2 w-px bg-amber-900/5 pointer-events-none z-20" />
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto pt-32 pb-44 px-6 sm:px-16 md:px-24 custom-scrollbar relative z-10 scroll-smooth">
-              <div className="max-w-4xl mx-auto">
+            <div 
+              className="flex-1 overflow-y-auto overflow-x-hidden pt-32 pb-44 px-6 sm:px-16 md:px-24 custom-scrollbar relative z-10 scroll-smooth w-full"
+              style={{ touchAction: 'pan-y' }}
+            >
+              <div className="max-w-4xl mx-auto w-full">
                 {/* Surah Header - Ornate Traditional Frame */}
                 {pageIndex === 0 && (
                   <div className="text-center mb-16 relative py-12 px-6 animate-fade-in">
@@ -220,17 +275,37 @@ const SurahDetail = () => {
                 >
                   {currentPage.ayahs.map((ayah, i) => {
                     let text = ayah.text;
+                    const isPlayingThisAyah = currentSource?.id === `${id}:${ayah.numberInSurah}` && isPlaying;
+
                     if (ayah.numberInSurah === 1 && surah.arabic.number !== 1 && surah.arabic.number !== 9) {
                         text = text.replace('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ', '').trim();
                     }
                     return (
-                      <span key={ayah.number} className="inline group">
-                        <span className="hover:text-emerald-700 transition-colors duration-300">{text}</span>
-                        <span className="inline-flex items-center justify-center relative w-12 h-12 sm:w-14 sm:h-14 mx-2 sm:mx-4 align-middle">
-                           <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full text-amber-100 fill-current opacity-30 group-hover:opacity-60 group-hover:text-emerald-100 transition-all duration-500">
-                              <path d="M50 5 L65 35 L95 50 L65 65 L50 95 L35 65 L5 50 L35 35 Z" />
+                      <span 
+                        key={ayah.number} 
+                        className="inline group cursor-pointer"
+                        onClick={() => playAyah(ayah)}
+                      >
+                        <span className={`transition-colors duration-300 ${isPlayingThisAyah ? 'text-emerald-600 font-bold' : 'hover:text-emerald-700'}`}>
+                          {text}
+                        </span>
+                        <span className="inline-flex items-center justify-center relative w-14 h-14 sm:w-16 sm:h-16 mx-2 sm:mx-4 align-middle">
+                           <svg viewBox="0 0 100 100" className={`absolute inset-0 w-full h-full transition-all duration-500 ${isPlayingThisAyah ? 'text-emerald-600 opacity-100' : 'text-amber-200/40 opacity-60 group-hover:opacity-100 group-hover:text-emerald-200'}`}>
+                              <path 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2.5" 
+                                d="M50 5 L63 25 L85 25 L85 47 L105 60 L85 73 L85 95 L63 95 L50 115 L37 95 L15 95 L15 73 L-5 60 L15 47 L15 25 L37 25 Z"
+                                transform="scale(0.8) translate(12, 12)"
+                              />
+                              <circle cx="50" cy="50" r="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 4" />
+                              <circle cx="50" cy="50" r="26" fill="none" stroke="currentColor" strokeWidth="1" />
+                              <path fill="currentColor" d="M15 50 L25 45 L25 55 Z" />
+                              <path fill="currentColor" d="M85 50 L75 45 L75 55 Z" />
+                              <path fill="currentColor" d="M50 15 L45 25 L55 25 Z" />
+                              <path fill="currentColor" d="M50 85 L45 75 L55 75 Z" />
                            </svg>
-                           <span className="relative text-[10px] sm:text-[11px] font-sans font-black text-amber-900/50 group-hover:text-emerald-900 transition-colors duration-500 mt-0.5">
+                           <span className={`relative text-[11px] sm:text-[12px] font-sans font-black transition-colors duration-500 mt-0.5 ${isPlayingThisAyah ? 'text-emerald-800' : 'text-amber-900/50 group-hover:text-emerald-900'}`}>
                               {ayah.numberInSurah}
                            </span>
                         </span>

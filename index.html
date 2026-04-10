@@ -18,6 +18,15 @@
       }
     </style>
     <title>Islamic Life</title>
+    <script>
+      // Global error handler for dynamic import failures (common after new deployments)
+      window.addEventListener('error', (e) => {
+        if (e.message && (e.message.includes('Failed to fetch dynamically imported module') || e.message.includes('TypeError: Failed to fetch dynamically imported module'))) {
+          console.warn('Dynamic import failed, reloading page to fetch latest version...');
+          window.location.reload();
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>

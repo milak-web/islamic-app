@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const UserStatsContext = createContext();
 
@@ -6,8 +6,6 @@ export const UserStatsProvider = ({ children }) => {
   const [stats, setStats] = useState(() => {
     const saved = localStorage.getItem('userStats');
     return saved ? JSON.parse(saved) : {
-      hasanat: 0,
-      todayHasanat: 0,
       streak: 0,
       lastActiveDate: null,
       streakSaved: false,
@@ -16,7 +14,8 @@ export const UserStatsProvider = ({ children }) => {
         tasbihCount: 0,
         prayersCompleted: 0,
         completedPrayers: [], // Track specific prayers to prevent re-rewarding
-        completedTasbihs: {}  // Track max counts per tasbih today
+        completedTasbihs: {},  // Track max counts per tasbih today
+        completedAyahs: [] // NEW: Track specific ayahs to prevent re-rewarding
       }
     };
   });
@@ -47,7 +46,6 @@ export const UserStatsProvider = ({ children }) => {
 
       setStats(prev => ({
         ...prev,
-        todayHasanat: 0,
         streak: newStreak,
         lastActiveDate: today,
         streakSaved: streakSaved,
@@ -56,7 +54,8 @@ export const UserStatsProvider = ({ children }) => {
           tasbihCount: 0, 
           prayersCompleted: 0,
           completedPrayers: [],
-          completedTasbihs: {}
+          completedTasbihs: {},
+          completedAyahs: []
         }
       }));
     }
@@ -66,43 +65,40 @@ export const UserStatsProvider = ({ children }) => {
     localStorage.setItem('userStats', JSON.stringify(stats));
   }, [stats]);
 
-  const addHasanat = (amount, actionType, metadata = {}) => {
+  const addHasanat = useCallback((amount, actionType, metadata = {}) => {
     setStats(prev => {
       const newDailyActions = { ...prev.dailyActions };
-      let actualReward = amount;
       
       if (actionType === 'quran') {
-        newDailyActions.ayahsRead += metadata.count || 1;
+        const ayahId = metadata.ayahId;
+        if (ayahId) {
+          if (!prev.dailyActions.completedAyahs?.includes(ayahId)) {
+            newDailyActions.completedAyahs = [...(prev.dailyActions.completedAyahs || []), ayahId];
+            newDailyActions.ayahsRead += 1;
+          }
+        } else {
+          newDailyActions.ayahsRead += metadata.count || 1;
+        }
       } else if (actionType === 'tasbih') {
         const id = metadata.id;
         const currentMax = prev.dailyActions.completedTasbihs?.[id] || 0;
         const newTotal = metadata.totalCount;
         
-        // Only reward for the "new" counts above the previous daily record
         if (newTotal > currentMax) {
           const rewardableCount = newTotal - currentMax;
-          const baseRewardPerCount = amount / metadata.increment; // calculate per-unit reward
-          actualReward = rewardableCount * baseRewardPerCount;
-          
           newDailyActions.completedTasbihs = {
             ...(prev.dailyActions.completedTasbihs || {}),
             [id]: newTotal
           };
           newDailyActions.tasbihCount += rewardableCount;
-        } else {
-          actualReward = 0; // No new hasanat if they are just repeating old counts
         }
       } else if (actionType === 'prayer') {
         const prayerKey = metadata.prayerKey;
-        if (prev.dailyActions.completedPrayers?.includes(prayerKey)) {
-          actualReward = 0; // Already rewarded for this prayer today
-        } else {
+        if (!prev.dailyActions.completedPrayers?.includes(prayerKey)) {
           newDailyActions.completedPrayers = [...(prev.dailyActions.completedPrayers || []), prayerKey];
           newDailyActions.prayersCompleted += 1;
         }
       }
-
-      if (actualReward === 0) return prev;
 
       // Check for streak rebuild
       let newStreak = prev.streak;
@@ -118,14 +114,12 @@ export const UserStatsProvider = ({ children }) => {
 
       return {
         ...prev,
-        hasanat: prev.hasanat + actualReward,
-        todayHasanat: prev.todayHasanat + actualReward,
         streak: newStreak,
         streakSaved: newStreakSaved,
         dailyActions: newDailyActions
       };
     });
-  };
+  }, []);
 
   // Backup stats whenever streak is > 0 to allow rebuilding
   useEffect(() => {
@@ -134,25 +128,17 @@ export const UserStatsProvider = ({ children }) => {
     }
   }, [stats.streak]);
 
-  const recordQuranReading = (text, ayahCount = 1) => {
-    // 10 Hasanat per letter (Sunan al-Tirmidhi 2910)
-    const letters = text.replace(/[\s\d\p{P}]/gu, '');
-    const count = letters.length;
-    const reward = count * 10;
-    addHasanat(reward, 'quran', { count: ayahCount });
-  };
+  const recordQuranReading = useCallback((text, ayahId) => {
+    addHasanat(0, 'quran', { ayahId });
+  }, [addHasanat]);
 
-  const recordTasbih = (id, count = 1, totalCount = 0) => {
-    // Base 10 hasanat per tasbih (Sahih Muslim 2097)
-    let baseReward = 10;
-    if (id === 'la-ilaha-illallah-wahdahu') baseReward = 100;
-    
-    addHasanat(baseReward * count, 'tasbih', { id, increment: count, totalCount });
-  };
+  const recordTasbih = useCallback((id, count = 1, totalCount = 0) => {
+    addHasanat(0, 'tasbih', { id, increment: count, totalCount });
+  }, [addHasanat]);
 
-  const recordPrayer = (prayerKey) => {
-    addHasanat(1000, 'prayer', { prayerKey });
-  };
+  const recordPrayer = useCallback((prayerKey) => {
+    addHasanat(0, 'prayer', { prayerKey });
+  }, [addHasanat]);
 
   return (
     <UserStatsContext.Provider value={{
