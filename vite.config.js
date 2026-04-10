@@ -33,7 +33,7 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        maximumFileSizeToCacheInBytes: 5000000,
+        maximumFileSizeToCacheInBytes: 10000000, // Increase cache limit for large JSON files
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/raw\.githubusercontent\.com\/fawazahmed0\/hadith-api\/.*$/,
@@ -67,4 +67,19 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    chunkSizeWarningLimit: 10000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+          if (id.includes('src/data')) {
+            return 'quran-data';
+          }
+        }
+      }
+    }
+  }
 })
