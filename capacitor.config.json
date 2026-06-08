@@ -1,5 +1,11 @@
 {
   "appId": "io.ionic.islamicapp",
   "appName": "IslamicApp",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_name",
+      "iconColor": "#10b981"
+    }
+  }
 }

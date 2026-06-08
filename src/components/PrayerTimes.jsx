@@ -24,6 +24,7 @@ const PrayerTimes = () => {
     return saved ? JSON.parse(saved) : { latitude: 21.4225, longitude: 39.8262 };
   });
   const [nextPrayer, setNextPrayer] = useState(null);
+  const [exactAlarmStatus, setExactAlarmStatus] = useState('prompt');
 
   const adhanVoices = [
     { id: 'adhan_makkah', name: t('makkah') },
@@ -38,17 +39,18 @@ const PrayerTimes = () => {
   const handleAdhanChange = (voiceId) => {
     setSelectedAdhan(voiceId);
     localStorage.setItem('selectedAdhan', voiceId);
-    if (times) {
-      const date = new Date();
-      const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
-      NotificationService.scheduleAdhanNotifications(times.timings, dateStr);
+    if (coords) {
+      NotificationService.syncAllNotifications(coords);
     }
     setIsVoiceMenuOpen(false);
   };
 
   useEffect(() => {
-    NotificationService.requestPermissions();
-    NotificationService.scheduleDailyReminders();
+    NotificationService.initialize().then((status) => {
+      if (status?.exactAlarm) {
+        setExactAlarmStatus(status.exactAlarm);
+      }
+    });
     
     // Ensure selectedAdhan is loaded from storage
     const savedVoice = localStorage.getItem('selectedAdhan');
@@ -119,9 +121,7 @@ const PrayerTimes = () => {
     setTimes(offlineData);
     setIsOfflineMode(true);
     calculateNextPrayer(offlineData.timings);
-    
-    const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
-    NotificationService.scheduleAdhanNotifications(offlineData.timings, dateStr);
+    NotificationService.syncAllNotifications({ latitude: lat, longitude: lng });
   };
 
   const getPrayerTimes = async () => {
@@ -151,7 +151,15 @@ const PrayerTimes = () => {
           if (data.code === 200) {
             setTimes(data.data);
             calculateNextPrayer(data.data.timings);
-            NotificationService.scheduleAdhanNotifications(data.data.timings, dateStr);
+            const apiLatitude = Number(data?.data?.meta?.latitude);
+            const apiLongitude = Number(data?.data?.meta?.longitude);
+            if (Number.isFinite(apiLatitude) && Number.isFinite(apiLongitude)) {
+              const apiCoords = { latitude: apiLatitude, longitude: apiLongitude };
+              setCoords(apiCoords);
+              NotificationService.syncAllNotifications(apiCoords);
+            } else if (coords) {
+              NotificationService.syncAllNotifications(coords);
+            }
             setIsOfflineMode(false);
           }
         }
@@ -210,6 +218,11 @@ const PrayerTimes = () => {
       console.error("Test notification failed:", err);
       alert("Failed to schedule test notification.");
     }
+  };
+
+  const enableExactPrayerAlerts = async () => {
+    const status = await NotificationService.openExactAlarmSettings();
+    setExactAlarmStatus(status);
   };
 
   const handleSubmit = (e) => {
@@ -359,6 +372,27 @@ const PrayerTimes = () => {
               <Navigation size={14} className={loading && !times ? 'animate-spin' : ''} />
               {t('useMyLocation')}
             </button>
+
+            {Capacitor.getPlatform() === 'android' && (
+              <div className="w-full border border-emerald-100 bg-emerald-50/60 rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
+                      {t('optimizePrayerAlerts')}
+                    </p>
+                    <p className="text-xs font-semibold text-slate-500 mt-1">
+                      {exactAlarmStatus === 'granted' ? t('exactAlarmEnabled') : t('exactAlarmNeedsAttention')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={enableExactPrayerAlerts}
+                    className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                  >
+                    {t('enableExactPrayerAlerts')}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="w-full">
               <button 

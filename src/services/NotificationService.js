@@ -1,152 +1,561 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
+import { getHijriDateInfo, getPrayerMoments, getStoredPrayerCoords } from '../utils/islamicCalendar';
 
-const scheduleNotification = async (id, title, body, date, extra = {}) => {
+const PRAYER_NOTIFICATION_BASE_ID = 1000;
+const REMINDER_NOTIFICATION_BASE_ID = 2000;
+const PRAYER_CHANNEL_PREFIX = 'prayer-adhan';
+const REMINDER_CHANNEL_ID = 'good-deeds-reminders';
+const ACTION_TYPE_ID = 'good-deed-actions';
+const PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+
+let listenersRegistered = false;
+
+const isNativePlatform = () => {
   const platform = Capacitor.getPlatform();
-  
-  // Skip notification scheduling on web if it's causing dynamic import issues
-  // Web notifications are generally not reliable for custom sounds anyway.
-  if (platform === 'web') {
-    console.log("Skipping notification schedule on web platform");
+  return platform === 'android' || platform === 'ios';
+};
+
+const isAndroid = () => Capacitor.getPlatform() === 'android';
+
+const getLanguage = () => {
+  if (typeof window === 'undefined') {
+    return 'en';
+  }
+
+  return window.localStorage.getItem('appLanguage') === 'ar' ? 'ar' : 'en';
+};
+
+const getSelectedAdhan = () => {
+  if (typeof window === 'undefined') {
+    return 'adhan_makkah';
+  }
+
+  return window.localStorage.getItem('selectedAdhan') || 'adhan_makkah';
+};
+
+const getPrayerChannelId = (adhanVoice = getSelectedAdhan()) => `${PRAYER_CHANNEL_PREFIX}-${adhanVoice}`;
+
+const getLocalizedCopy = () => {
+  const language = getLanguage();
+
+  const prayerLabels = language === 'ar'
+    ? {
+        Fajr: 'الفجر',
+        Dhuhr: 'الظهر',
+        Asr: 'العصر',
+        Maghrib: 'المغرب',
+        Isha: 'العشاء'
+      }
+    : {
+        Fajr: 'Fajr',
+        Dhuhr: 'Dhuhr',
+        Asr: 'Asr',
+        Maghrib: 'Maghrib',
+        Isha: 'Isha'
+      };
+
+  return {
+    prayerLabels,
+    actions: language === 'ar'
+      ? {
+          quran: 'افتح القرآن',
+          tasbih: 'افتح الأذكار',
+          prayers: 'مواقيت الصلاة'
+        }
+      : {
+          quran: 'Open Quran',
+          tasbih: 'Open Adhkar',
+          prayers: 'Prayer Times'
+        },
+    reminders: language === 'ar'
+      ? {
+          morningAdhkar: {
+            title: 'أذكار الصباح',
+            body: 'ابدأ يومك بذكر الله وحصن نفسك مع أذكار الصباح.',
+            route: '/tasbih?tab=morning'
+          },
+          quran: {
+            title: 'ورد القرآن اليومي',
+            body: 'صفحات قليلة الآن تقرّبك من ختمة مباركة.',
+            route: '/quran/read'
+          },
+          eveningAdhkar: {
+            title: 'أذكار المساء',
+            body: 'حان وقت أذكار المساء والسكينة قبل نهاية اليوم.',
+            route: '/tasbih?tab=evening'
+          },
+          fridayKahf: {
+            title: 'سنة الجمعة',
+            body: 'لا تنس قراءة سورة الكهف اليوم.',
+            route: '/quran/read/18'
+          },
+          ramadanQuran: {
+            title: 'ختمة رمضان',
+            body: 'رمضان فرصة عظيمة؛ افتح القرآن وأكمل وردك اليوم.',
+            route: '/quran/read'
+          },
+          lastTenNights: {
+            title: 'العشر الأواخر',
+            body: 'خصص هذه الليلة للقيام والقرآن والدعاء.',
+            route: '/quran/read'
+          },
+          fastingPrep: {
+            title: 'تذكير بصيام الغد',
+            body: 'غدًا يوم صيام مستحب، جدّد نيتك واستعد له من الليلة.',
+            route: '/prayer-times'
+          },
+          shawwal: {
+            title: 'ست من شوال',
+            body: 'واصل صيام الست من شوال بخطوات ثابتة.',
+            route: '/prayer-times'
+          }
+        }
+      : {
+          morningAdhkar: {
+            title: 'Morning Adhkar',
+            body: 'Begin your morning with remembrance and protection.',
+            route: '/tasbih?tab=morning'
+          },
+          quran: {
+            title: 'Daily Quran Reading',
+            body: 'A few pages now can move your khatmah forward beautifully.',
+            route: '/quran/read'
+          },
+          eveningAdhkar: {
+            title: 'Evening Adhkar',
+            body: 'Take a moment for your evening adhkar before the day closes.',
+            route: '/tasbih?tab=evening'
+          },
+          fridayKahf: {
+            title: 'Friday Sunnah',
+            body: 'Do not miss Surah Al-Kahf today.',
+            route: '/quran/read/18'
+          },
+          ramadanQuran: {
+            title: 'Ramadan Khatam',
+            body: 'Ramadan is your season for Quran. Open your reading and continue today.',
+            route: '/quran/read'
+          },
+          lastTenNights: {
+            title: 'Last Ten Nights',
+            body: 'Set aside this night for Quran, dhikr, and dua.',
+            route: '/quran/read'
+          },
+          fastingPrep: {
+            title: 'Fast Tomorrow',
+            body: 'Tomorrow is a recommended fasting day. Renew your intention tonight.',
+            route: '/prayer-times'
+          },
+          shawwal: {
+            title: 'Six of Shawwal',
+            body: 'A gentle reminder to keep your Shawwal fasting journey going.',
+            route: '/prayer-times'
+          }
+        }
+  };
+};
+
+const addMinutes = (date, minutes) => new Date(date.getTime() + minutes * 60000);
+
+const setTime = (date, hours, minutes) => {
+  const nextDate = new Date(date);
+  nextDate.setHours(hours, minutes, 0, 0);
+  return nextDate;
+};
+
+const normalizeCoords = (coords) => {
+  if (coords?.latitude && coords?.longitude) {
+    return coords;
+  }
+
+  return getStoredPrayerCoords();
+};
+
+const getFastingOpportunity = (date) => {
+  const dayOfWeek = date.getDay();
+  const hijri = getHijriDateInfo(date, 'en');
+
+  if (hijri.month === 9) {
+    return true;
+  }
+
+  if (dayOfWeek === 1 || dayOfWeek === 4) {
+    return true;
+  }
+
+  if ([13, 14, 15].includes(hijri.day)) {
+    return true;
+  }
+
+  if (hijri.month === 1 && (hijri.day === 9 || hijri.day === 10)) {
+    return true;
+  }
+
+  if (hijri.month === 12 && hijri.day === 9) {
+    return true;
+  }
+
+  return false;
+};
+
+const ensureNotificationChannels = async () => {
+  if (!isAndroid()) {
     return;
   }
 
-  const selectedAdhan = localStorage.getItem('selectedAdhan') || 'adhan_makkah';
-  
-  // Note: Sound files must be in the native project's resources folder
-  // Android: res/raw (reference without extension)
-  // iOS: Main bundle (reference with extension)
-  // Web/PWA: Custom sounds are generally not supported for notifications.
-  const soundFile = platform === 'android' ? selectedAdhan : `${selectedAdhan}.mp3`;
+  const adhanVoice = getSelectedAdhan();
+  const prayerChannelId = getPrayerChannelId(adhanVoice);
 
-  await LocalNotifications.schedule({
-    notifications: [
+  await LocalNotifications.createChannel({
+    id: prayerChannelId,
+    name: 'Prayer Adhan Alerts',
+    description: 'Exact prayer alerts with the selected adhan voice.',
+    sound: `${adhanVoice}.mp3`,
+    importance: 5,
+    visibility: 1,
+    vibration: true,
+    lights: true,
+    lightColor: '#10b981'
+  });
+
+  await LocalNotifications.createChannel({
+    id: REMINDER_CHANNEL_ID,
+    name: 'Good Deeds Reminders',
+    description: 'Reminders for Quran, adhkar, fasting, and seasonal Sunnah.',
+    importance: 4,
+    visibility: 1,
+    vibration: true,
+    lights: true,
+    lightColor: '#10b981'
+  });
+};
+
+const ensureActionTypes = async () => {
+  if (!isNativePlatform()) {
+    return;
+  }
+
+  const copy = getLocalizedCopy();
+
+  await LocalNotifications.registerActionTypes({
+    types: [
       {
-        id,
-        title,
-        body,
-        schedule: { at: date, allowPause: false },
-        sound: soundFile,
-        attachments: [],
-        actionTypeId: '',
-        extra,
-        smallIcon: 'ic_stat_name', // Needs to be in res/drawable
-        iconColor: '#10b981'
+        id: ACTION_TYPE_ID,
+        actions: [
+          { id: 'open-quran', title: copy.actions.quran },
+          { id: 'open-tasbih', title: copy.actions.tasbih },
+          { id: 'open-prayers', title: copy.actions.prayers }
+        ]
       }
     ]
   });
 };
 
-const scheduleAdhanNotifications = async (timings, dateStr) => {
-  try {
-    const { display } = await LocalNotifications.checkPermissions();
-    if (display !== 'granted') {
-      await LocalNotifications.requestPermissions();
-    }
-
-    // Clear all existing adhan notifications (100-200 range)
-    const pending = await LocalNotifications.getPending();
-    const toCancel = pending.notifications
-      .filter(n => n.id >= 100 && n.id < 200)
-      .map(n => ({ id: n.id }));
-    
-    if (toCancel.length > 0) {
-      await LocalNotifications.cancel({ notifications: toCancel });
-    }
-
-    const prayers = [
-      { id: 1, name: 'Fajr', time: timings.Fajr },
-      { id: 2, name: 'Dhuhr', time: timings.Dhuhr },
-      { id: 3, name: 'Asr', time: timings.Asr },
-      { id: 4, name: 'Maghrib', time: timings.Maghrib },
-      { id: 5, name: 'Isha', time: timings.Isha }
-    ];
-
-    const now = new Date();
-    const [day, month, year] = dateStr.split('-').map(Number);
-
-    // Schedule for the next 3 days to keep it fresh
-    for (let i = 0; i < 3; i++) {
-      const targetDate = new Date(year, month - 1, day + i);
-      
-      prayers.forEach(async (prayer) => {
-        const [hours, minutes] = prayer.time.split(':').map(Number);
-        const prayerDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), hours, minutes);
-
-        if (prayerDate > now) {
-          await scheduleNotification(
-            100 + (i * 10) + prayer.id,
-            `Time for ${prayer.name}`,
-            `It is time for ${prayer.name} prayer.`,
-            prayerDate,
-            { type: 'adhan', prayer: prayer.name }
-          );
-        }
-      });
-    }
-  } catch (err) {
-    console.error("Failed to schedule notifications:", err);
+const ensureListeners = async () => {
+  if (!isNativePlatform() || listenersRegistered) {
+    return;
   }
+
+  await LocalNotifications.addListener('localNotificationActionPerformed', ({ actionId, notification }) => {
+    const routeFromAction = {
+      'open-quran': '/quran/read',
+      'open-tasbih': '/tasbih',
+      'open-prayers': '/prayer-times'
+    };
+
+    const route = routeFromAction[actionId] || notification?.extra?.route;
+    if (route && typeof window !== 'undefined') {
+      window.location.hash = `#${route}`;
+    }
+  });
+
+  listenersRegistered = true;
 };
 
-const scheduleDailyReminders = async () => {
-  // Clear existing daily reminders (200-300 range)
+const buildPrayerNotifications = (coords, startDate = new Date(), days = 5) => {
+  const copy = getLocalizedCopy();
+  const notifications = [];
+
+  for (let offset = 0; offset < days; offset += 1) {
+    const targetDate = new Date(startDate);
+    targetDate.setHours(12, 0, 0, 0);
+    targetDate.setDate(startDate.getDate() + offset);
+
+    const prayerMoments = getPrayerMoments(targetDate, coords);
+    const prayerDates = [
+      prayerMoments.fajr,
+      prayerMoments.dhuhr,
+      prayerMoments.asr,
+      prayerMoments.maghrib,
+      prayerMoments.isha
+    ];
+
+    prayerDates.forEach((prayerDate, index) => {
+      if (prayerDate <= new Date()) {
+        return;
+      }
+
+      const prayerName = PRAYER_NAMES[index];
+      const prayerLabel = copy.prayerLabels[prayerName] || prayerName;
+
+      notifications.push({
+        id: PRAYER_NOTIFICATION_BASE_ID + (offset * 10) + index,
+        title: copy.prayerLabels[prayerName] === prayerName ? `Time for ${prayerLabel}` : `حان وقت ${prayerLabel}`,
+        body: copy.prayerLabels[prayerName] === prayerName
+          ? `It is time for ${prayerLabel} prayer.`
+          : `حان الآن وقت صلاة ${prayerLabel}.`,
+        schedule: {
+          at: prayerDate,
+          allowWhileIdle: true
+        },
+        channelId: getPrayerChannelId(),
+        actionTypeId: ACTION_TYPE_ID,
+        extra: {
+          type: 'adhan',
+          prayer: prayerName,
+          route: '/prayer-times'
+        },
+        smallIcon: 'ic_stat_name',
+        iconColor: '#10b981'
+      });
+    });
+  }
+
+  return notifications;
+};
+
+const buildReminderNotifications = (coords, startDate = new Date(), days = 7) => {
+  const copy = getLocalizedCopy();
+  const notifications = [];
+
+  for (let offset = 0; offset < days; offset += 1) {
+    const targetDate = new Date(startDate);
+    targetDate.setHours(12, 0, 0, 0);
+    targetDate.setDate(startDate.getDate() + offset);
+
+    const hijri = getHijriDateInfo(targetDate, 'en');
+    const prayerMoments = getPrayerMoments(targetDate, coords);
+    const dayOfWeek = targetDate.getDay();
+    const reminderBaseId = REMINDER_NOTIFICATION_BASE_ID + (offset * 20);
+
+    const morningAdhkarDate = addMinutes(prayerMoments.fajr, 25);
+    if (morningAdhkarDate > new Date()) {
+      notifications.push({
+        id: reminderBaseId + 1,
+        title: copy.reminders.morningAdhkar.title,
+        body: copy.reminders.morningAdhkar.body,
+        schedule: { at: morningAdhkarDate },
+        channelId: REMINDER_CHANNEL_ID,
+        actionTypeId: ACTION_TYPE_ID,
+        extra: { type: 'adhkar', route: copy.reminders.morningAdhkar.route },
+        smallIcon: 'ic_stat_name',
+        iconColor: '#10b981'
+      });
+    }
+
+    const quranReminderDate = setTime(targetDate, 10, 30);
+    if (quranReminderDate > new Date()) {
+      const quranReminder = hijri.month === 9 ? copy.reminders.ramadanQuran : copy.reminders.quran;
+      notifications.push({
+        id: reminderBaseId + 2,
+        title: quranReminder.title,
+        body: quranReminder.body,
+        schedule: { at: quranReminderDate },
+        channelId: REMINDER_CHANNEL_ID,
+        actionTypeId: ACTION_TYPE_ID,
+        extra: { type: 'quran', route: quranReminder.route },
+        smallIcon: 'ic_stat_name',
+        iconColor: '#10b981'
+      });
+    }
+
+    const eveningAdhkarDate = addMinutes(prayerMoments.asr, 25);
+    if (eveningAdhkarDate > new Date()) {
+      notifications.push({
+        id: reminderBaseId + 3,
+        title: copy.reminders.eveningAdhkar.title,
+        body: copy.reminders.eveningAdhkar.body,
+        schedule: { at: eveningAdhkarDate },
+        channelId: REMINDER_CHANNEL_ID,
+        actionTypeId: ACTION_TYPE_ID,
+        extra: { type: 'adhkar', route: copy.reminders.eveningAdhkar.route },
+        smallIcon: 'ic_stat_name',
+        iconColor: '#10b981'
+      });
+    }
+
+    if (dayOfWeek === 5) {
+      const fridayKahfDate = setTime(targetDate, 9, 0);
+      if (fridayKahfDate > new Date()) {
+        notifications.push({
+          id: reminderBaseId + 4,
+          title: copy.reminders.fridayKahf.title,
+          body: copy.reminders.fridayKahf.body,
+          schedule: { at: fridayKahfDate },
+          channelId: REMINDER_CHANNEL_ID,
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { type: 'friday', route: copy.reminders.fridayKahf.route },
+          smallIcon: 'ic_stat_name',
+          iconColor: '#10b981'
+        });
+      }
+    }
+
+    if (hijri.month === 9 && hijri.day >= 21) {
+      const lastTenNightDate = setTime(targetDate, 22, 30);
+      if (lastTenNightDate > new Date()) {
+        notifications.push({
+          id: reminderBaseId + 5,
+          title: copy.reminders.lastTenNights.title,
+          body: copy.reminders.lastTenNights.body,
+          schedule: { at: lastTenNightDate },
+          channelId: REMINDER_CHANNEL_ID,
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { type: 'last-ten-nights', route: copy.reminders.lastTenNights.route },
+          smallIcon: 'ic_stat_name',
+          iconColor: '#10b981'
+        });
+      }
+    }
+
+    if (hijri.month === 10 && hijri.day > 1) {
+      const shawwalReminderDate = setTime(targetDate, 11, 30);
+      if (shawwalReminderDate > new Date()) {
+        notifications.push({
+          id: reminderBaseId + 6,
+          title: copy.reminders.shawwal.title,
+          body: copy.reminders.shawwal.body,
+          schedule: { at: shawwalReminderDate },
+          channelId: REMINDER_CHANNEL_ID,
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { type: 'shawwal', route: copy.reminders.shawwal.route },
+          smallIcon: 'ic_stat_name',
+          iconColor: '#10b981'
+        });
+      }
+    }
+
+    const tomorrow = new Date(targetDate);
+    tomorrow.setDate(targetDate.getDate() + 1);
+    if (getFastingOpportunity(tomorrow)) {
+      const fastingPrepDate = setTime(targetDate, 21, 0);
+      if (fastingPrepDate > new Date()) {
+        notifications.push({
+          id: reminderBaseId + 7,
+          title: copy.reminders.fastingPrep.title,
+          body: copy.reminders.fastingPrep.body,
+          schedule: { at: fastingPrepDate },
+          channelId: REMINDER_CHANNEL_ID,
+          actionTypeId: ACTION_TYPE_ID,
+          extra: { type: 'fasting-prep', route: copy.reminders.fastingPrep.route },
+          smallIcon: 'ic_stat_name',
+          iconColor: '#10b981'
+        });
+      }
+    }
+  }
+
+  return notifications;
+};
+
+const cancelNotificationRange = async (start, end) => {
   const pending = await LocalNotifications.getPending();
   const toCancel = pending.notifications
-    .filter(n => n.id >= 200 && n.id < 300)
-    .map(n => ({ id: n.id }));
-  
+    .filter((notification) => notification.id >= start && notification.id < end)
+    .map((notification) => ({ id: notification.id }));
+
   if (toCancel.length > 0) {
     await LocalNotifications.cancel({ notifications: toCancel });
   }
+};
 
-  const today = new Date();
+const scheduleNotificationBatch = async (notifications) => {
+  if (!notifications.length) {
+    return;
+  }
 
-  // 1. Morning Adhkar (7 AM)
-  const morningAdhkar = new Date();
-  morningAdhkar.setHours(7, 0, 0, 0);
-  if (morningAdhkar < today) morningAdhkar.setDate(morningAdhkar.getDate() + 1);
+  await LocalNotifications.schedule({ notifications });
+};
 
-  await scheduleNotification(
-    201,
-    'Morning Adhkar',
-    'Start your day with the remembrance of Allah.',
-    morningAdhkar,
-    { type: 'adhkar' }
-  );
+const requestPermissions = async () => {
+  const displayStatus = await LocalNotifications.requestPermissions();
+  return displayStatus.display === 'granted';
+};
 
-  // 2. Quran Reading Streak (10 AM)
-  const quranReminder = new Date();
-  quranReminder.setHours(10, 0, 0, 0);
-  if (quranReminder < today) quranReminder.setDate(quranReminder.getDate() + 1);
+const getExactAlarmStatus = async () => {
+  if (!isAndroid()) {
+    return 'granted';
+  }
 
-  await scheduleNotification(
-    202,
-    'Daily Quran Reading',
-    "Don't forget to maintain your Quran reading streak today!",
-    quranReminder,
-    { type: 'quran' }
-  );
+  const status = await LocalNotifications.checkExactNotificationSetting();
+  return status.exact_alarm;
+};
 
-  // 3. Evening Adhkar (6 PM)
-  const eveningAdhkar = new Date();
-  eveningAdhkar.setHours(18, 0, 0, 0);
-  if (eveningAdhkar < today) eveningAdhkar.setDate(eveningAdhkar.getDate() + 1);
+const openExactAlarmSettings = async () => {
+  if (!isAndroid()) {
+    return 'granted';
+  }
 
-  await scheduleNotification(
-    203,
-    'Evening Adhkar',
-    'Time for your evening Adhkar and remembrance.',
-    eveningAdhkar,
-    { type: 'adhkar' }
-  );
+  const status = await LocalNotifications.changeExactNotificationSetting();
+  return status.exact_alarm;
+};
+
+const initialize = async () => {
+  if (!isNativePlatform()) {
+    return { display: 'skipped', exactAlarm: 'skipped' };
+  }
+
+  const displayGranted = await requestPermissions();
+  await ensureNotificationChannels();
+  await ensureActionTypes();
+  await ensureListeners();
+
+  return {
+    display: displayGranted ? 'granted' : 'denied',
+    exactAlarm: await getExactAlarmStatus()
+  };
+};
+
+const refreshPrayerNotifications = async (coords = getStoredPrayerCoords()) => {
+  if (!isNativePlatform()) {
+    return;
+  }
+
+  const safeCoords = normalizeCoords(coords);
+  await ensureNotificationChannels();
+  await ensureActionTypes();
+  await ensureListeners();
+  await cancelNotificationRange(PRAYER_NOTIFICATION_BASE_ID, REMINDER_NOTIFICATION_BASE_ID);
+  const prayerNotifications = buildPrayerNotifications(safeCoords, new Date(), 5);
+  await scheduleNotificationBatch(prayerNotifications);
+};
+
+const scheduleDailyReminders = async (coords = getStoredPrayerCoords()) => {
+  if (!isNativePlatform()) {
+    return;
+  }
+
+  const safeCoords = normalizeCoords(coords);
+  await ensureNotificationChannels();
+  await ensureActionTypes();
+  await ensureListeners();
+  await cancelNotificationRange(REMINDER_NOTIFICATION_BASE_ID, REMINDER_NOTIFICATION_BASE_ID + 1000);
+  const reminderNotifications = buildReminderNotifications(safeCoords, new Date(), 7);
+  await scheduleNotificationBatch(reminderNotifications);
+};
+
+const syncAllNotifications = async (coords = getStoredPrayerCoords()) => {
+  await refreshPrayerNotifications(coords);
+  await scheduleDailyReminders(coords);
 };
 
 export const NotificationService = {
-  scheduleAdhanNotifications,
+  initialize,
+  refreshPrayerNotifications,
   scheduleDailyReminders,
-  requestPermissions: async () => {
-    const status = await LocalNotifications.requestPermissions();
-    return status.display === 'granted';
-  }
+  syncAllNotifications,
+  requestPermissions,
+  getExactAlarmStatus,
+  openExactAlarmSettings
 };

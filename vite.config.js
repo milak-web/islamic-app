@@ -3,13 +3,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const isNativeBuild = process.env.CAPACITOR_BUILD === 'true'
+const base = isNativeBuild ? './' : '/islamic-app/'
+
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/islamic-app/',
+  base,
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
+    ...(!isNativeBuild ? [VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'icon.svg'],
@@ -65,7 +68,7 @@ export default defineConfig({
           }
         ]
       }
-    })
+    })] : [])
   ],
   build: {
     chunkSizeWarningLimit: 10000,

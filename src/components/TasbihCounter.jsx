@@ -1,9 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { RotateCcw, Plus, Minus, Settings, List, ArrowRight, CheckCircle, ChevronLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RotateCcw, Plus, Minus, CheckCircle, ChevronLeft } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useUserStats } from '../context/UserStatsContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { adhkarContent, prayerRoutines } from '../data/adhkar';
+
+const DEFAULT_ADHKAR_ID = 'subhanallah';
+
+const resolveSavedAdhkarId = () => {
+  const savedId = localStorage.getItem('tasbihCurrentAdhkarId');
+  if (savedId && adhkarContent[savedId]) {
+    return savedId;
+  }
+
+  const savedLabel = localStorage.getItem('tasbihLabel');
+  if (savedLabel) {
+    const match = Object.values(adhkarContent).find(
+      (content) => content.title.en === savedLabel || content.title.ar === savedLabel
+    );
+    if (match) {
+      return match.id;
+    }
+  }
+
+  return DEFAULT_ADHKAR_ID;
+};
 
 const TasbihCounter = () => {
   const { t, language } = useLanguage();
@@ -17,8 +38,14 @@ const TasbihCounter = () => {
   // Counter State
   const [count, setCount] = useState(() => parseInt(localStorage.getItem('tasbihCount') || '0', 10));
   const [target, setTarget] = useState(() => parseInt(localStorage.getItem('tasbihTarget') || '33', 10));
-  const [currentAdhkarId, setCurrentAdhkarId] = useState(null); // ID from adhkarContent
-  const [customLabel, setCustomLabel] = useState(localStorage.getItem('tasbihLabel') || "SubhanAllah");
+  const [currentAdhkarId, setCurrentAdhkarId] = useState(resolveSavedAdhkarId); // ID from adhkarContent
+  const [customLabel, setCustomLabel] = useState(() => {
+    const initialId = resolveSavedAdhkarId();
+    const initialContent = adhkarContent[initialId];
+    return initialContent ? initialContent.title.en : (localStorage.getItem('tasbihLabel') || 'SubhanAllah');
+  });
+  const [isAdvancingStep, setIsAdvancingStep] = useState(false);
+  const advanceTimeoutRef = useRef(null);
 
   // Routine State
   const [routineSteps, setRoutineSteps] = useState([]);
@@ -34,6 +61,27 @@ const TasbihCounter = () => {
     localStorage.setItem('customTasbihPlan', JSON.stringify(customPlan));
   }, [customPlan]);
 
+  useEffect(() => {
+    if (currentAdhkarId) {
+      localStorage.setItem('tasbihCurrentAdhkarId', currentAdhkarId);
+    }
+  }, [currentAdhkarId]);
+
+  useEffect(() => {
+    if (currentAdhkarId && adhkarContent[currentAdhkarId]) {
+      const content = adhkarContent[currentAdhkarId];
+      setCustomLabel(language === 'ar' ? content.title.ar : content.title.en);
+    }
+  }, [currentAdhkarId, language]);
+
+  useEffect(() => {
+    return () => {
+      if (advanceTimeoutRef.current) {
+        window.clearTimeout(advanceTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const toggleInPlan = (id) => {
     setCustomPlan(prev => {
       const exists = prev.find(item => item.id === id);
@@ -44,6 +92,7 @@ const TasbihCounter = () => {
 
   const startCustomPlan = () => {
     if (customPlan.length === 0) return;
+    setIsAdvancingStep(false);
     setRoutineSteps(customPlan);
     setCurrentStepIndex(0);
     setMode('routine');
@@ -85,6 +134,7 @@ const TasbihCounter = () => {
   }, [count, target, customLabel]);
 
   const markRoutineComplete = () => {
+    setIsAdvancingStep(false);
     setRoutineCompleted(true);
     const prayer = searchParams.get('prayer');
     if (prayer) {
@@ -105,6 +155,7 @@ const TasbihCounter = () => {
   };
 
   const startRoutine = (prayerKey) => {
+    setIsAdvancingStep(false);
     const routine = prayerRoutines[prayerKey] || prayerRoutines.common;
     setRoutineSteps(routine);
     setCurrentStepIndex(0);
@@ -116,13 +167,19 @@ const TasbihCounter = () => {
   const loadStep = (step) => {
     if (!step) return;
     const content = adhkarContent[step.id];
+    if (!content) return;
     setCurrentAdhkarId(step.id);
     setCustomLabel(language === 'ar' ? content.title.ar : content.title.en);
     setTarget(step.target);
     setCount(0);
+    setIsAdvancingStep(false);
   };
 
   const nextStep = () => {
+    if (advanceTimeoutRef.current) {
+      window.clearTimeout(advanceTimeoutRef.current);
+      advanceTimeoutRef.current = null;
+    }
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < routineSteps.length) {
       setCurrentStepIndex(nextIndex);
@@ -133,26 +190,60 @@ const TasbihCounter = () => {
   };
 
   const increment = () => {
-    if (count < target) {
-      const newCount = count + 1;
-      setCount(newCount);
-      recordTasbih(currentAdhkarId, 1, newCount);
-      if (navigator.vibrate) navigator.vibrate(50);
-      
-      // Auto-advance if in routine mode and target reached
-      if (mode === 'routine' && count + 1 >= target) {
-         if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
-         // Optional: Auto-advance delay or wait for user to click "Next"
-         // Current design: Button changes to "Next" or "Done"
-      }
+    if (count >= target || isAdvancingStep) return;
+
+    const newCount = count + 1;
+    setCount(newCount);
+    recordTasbih(currentAdhkarId, 1, newCount);
+    if (navigator.vibrate) navigator.vibrate(50);
+
+    if (mode === 'routine' && newCount >= target) {
+      setIsAdvancingStep(true);
+      advanceTimeoutRef.current = window.setTimeout(() => {
+        nextStep();
+      }, 250);
     }
   };
+
+  // Volume Button Control
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Intercept Volume Up (AudioVolumeUp)
+      if (e.key === 'AudioVolumeUp' || e.keyCode === 175) {
+        e.preventDefault();
+        increment();
+      }
+    };
+
+    // For mobile PWA/Web, sometimes only 'keyup' or specific events work
+    // Also adding a click fallback for testing
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Attempting to catch volume change via media session if available
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('nexttrack', increment);
+      navigator.mediaSession.setActionHandler('previoustrack', decrement);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+      }
+    };
+  }, [count, target, currentAdhkarId]); // Dependencies to ensure increment uses fresh state
 
   const decrement = () => {
     if (count > 0) setCount(prev => prev - 1);
   };
 
   const reset = () => {
+    if (advanceTimeoutRef.current) {
+      window.clearTimeout(advanceTimeoutRef.current);
+      advanceTimeoutRef.current = null;
+    }
+    setIsAdvancingStep(false);
     setCount(0);
   };
 
@@ -283,17 +374,15 @@ const TasbihCounter = () => {
               </button>
             )}
 
-            {mode === 'routine' && isTargetReached ? (
-              <button 
-                onClick={nextStep}
-                className="px-10 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-600/20 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest"
-              >
-                {currentStepIndex < routineSteps.length - 1 ? t('next') : t('finish')} <ArrowRight size={20} />
-              </button>
+            {mode === 'routine' && isAdvancingStep ? (
+              <div className="px-10 py-4 rounded-2xl bg-emerald-100 text-emerald-700 shadow-inner transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest">
+                {t('loading')}
+              </div>
             ) : (
               <button 
                 onClick={increment}
-                className="w-24 h-24 rounded-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-2xl shadow-emerald-600/30 transition-all transform active:scale-95 flex items-center justify-center focus:outline-none border-8 border-white group"
+                disabled={isTargetReached}
+                className="w-24 h-24 rounded-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-emerald-300 disabled:shadow-none text-white shadow-2xl shadow-emerald-600/30 transition-all transform active:scale-95 disabled:active:scale-100 flex items-center justify-center focus:outline-none border-8 border-white group"
               >
                 <Plus size={40} className="group-hover:rotate-90 transition-transform duration-500" />
               </button>

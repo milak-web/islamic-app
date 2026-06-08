@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as adhan from 'adhan';
+import { Capacitor } from '@capacitor/core';
 import { useAudio } from '../context/AudioContext';
 
 const ForegroundAdhanManager = () => {
@@ -23,6 +24,7 @@ const ForegroundAdhanManager = () => {
   }, []);
 
   useEffect(() => {
+    if (Capacitor.getPlatform() !== 'web') return;
     if (!currentMinute) return;
 
     const savedCoords = localStorage.getItem('prayerCoords');
